@@ -371,6 +371,13 @@ EXTENDED_TABLES = {
         "table": "extended_sanity_checks",
         "columns": ["check", "severity", "status", "affected_rows", "details"],
     },
+}
+
+# Rendered directly under the main comparison table on the Overview tab, not
+# among the Extended Analysis tabs, since they carry their own row shape
+# (one row per checkpoint/molecule, no ligand_set/tier/family) rather than
+# the comparison_rows-derived stratification the extended filters target.
+DRUGLIKE_TABLES: dict[str, dict[str, object]] = {
     "Druglike summary": {
         "table": "extended_druglike_summary",
         "columns": [
@@ -723,6 +730,35 @@ def default_extended_db_path(db_path: Path, table_names: set[str]) -> Path:
     return Path(override if override else str(DEFAULT_EXTENDED_DB))
 
 
+def render_druglike_tables(db_path: Path, table_names: set[str]) -> None:
+    st.divider()
+    st.subheader("Druglike conformer evaluation")
+
+    extended_db_path = default_extended_db_path(db_path, table_names)
+    ensure_db_available(extended_db_path)
+    if not extended_db_path.exists():
+        st.info(f"Extended DB not found: {extended_db_path}")
+        return
+
+    extended_mtime_ns = extended_db_path.stat().st_mtime_ns
+    extended_table_names = load_table_names(str(extended_db_path), extended_mtime_ns)
+    available = [
+        label
+        for label, spec in DRUGLIKE_TABLES.items()
+        if spec["table"] in extended_table_names
+    ]
+    if not available:
+        st.info(f"No druglike tables found in {extended_db_path}")
+        return
+
+    tabs = st.tabs(available)
+    for tab, label in zip(tabs, available):
+        spec = DRUGLIKE_TABLES[label]
+        with tab:
+            frame = load_table(str(extended_db_path), spec["table"], extended_mtime_ns)
+            display_table(frame, spec["columns"], spec["table"])
+
+
 def render_extended_analysis(db_path: Path, table_names: set[str]) -> None:
     st.divider()
     st.header("Extended Analysis")
@@ -910,6 +946,8 @@ def main() -> None:
         table_frame = select_view(comparison_rows, ligand_set, tier, family)
         table_frame = table_frame[table_frame["row_type"].astype(str) == "generation"]
     display_table(table_frame, table_columns, table_name)
+    if table_label == "Overview":
+        render_druglike_tables(db_path, table_names)
 
     render_extended_analysis(db_path, table_names)
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Evaluate generated conformer pools against the "druglike" test set.
 
-The druglike set is a small hand-picked list of named drugs/candidates with an
-ensemble of experimentally observed conformers per molecule. There is no single
-crystal pose, so ensemble recovery is handled by eval_druglike_covmat.py while
-this script scores each generated pool on validity/diversity/energy:
+The druglike set is a small hand-picked list of named drugs/candidates carrying
+SMILES and metadata only, with no crystal conformer for any molecule, so there is
+no RMSD-to-crystal recovery metric here. Each generated pool is instead scored on
+the validity/diversity/energy methodology the CASF pipeline uses elsewhere:
 
   - PoseBusters validity via `posebusters_geometry_passes`. The reference molecule
     is the SMILES topology with no coordinates, so the checks fall back to the
