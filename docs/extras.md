@@ -80,8 +80,10 @@ which maps generated SMILES back to CASF `ligand_id`s via the intersection mappi
 
 ## Druglike test set
 
-A small hand-picked set of named drugs/candidates with no crystal conformers, so it
-is scored on validity/diversity/energy only — no RMSD recovery. Three steps:
+A small hand-picked set of named drugs/candidates with no single crystal pose.
+Each molecule carries an ensemble of experimentally observed conformers; validity,
+diversity, and energy are scored in-repo, and GEOM-style COV/MAT recovery is folded
+in by `build_druglike_covmat.py`. Three steps:
 
 ```bash
 export CASF_GENERATION_RESULTS_ROOT=/path/to/gen_results
@@ -95,64 +97,9 @@ python scripts/build_druglike_covmat.py \
   --druglike-db "$CASF_EVAL_OUT_DIR/druglike_eval.sqlite"
 ```
 
-The last step folds in COV/MAT results and publishes `extended_druglike_summary` /
-`extended_druglike_per_molecule` into the extended-analysis sidecar DB, where the
-dashboard shows them as "Druglike summary" and "Druglike per-molecule" tabs.
-
-## Qwen checkpoint batches
-
-Run labels and the inference output directory for each cohort live in one
-manifest, [`src/casf_benchmark/config/generation_runs.yaml`](../src/casf_benchmark/config/generation_runs.yaml)
-(read via `casf_benchmark.catalog.load_generation_runs`). Add a run there once
-and every batch script picks it up.
-
-The manifest is not Qwen-only: `label` is arbitrary text, so evaluating RDKit, loqi or
-any other generator on the druglike set is a new entry plus its eval CSVs, not a script
-fork, and the rows land in the same `extended_druglike_summary` /
-`extended_druglike_per_molecule` tables. An entry may also set `generator`,
-`display_label`, `model_size`, `tokenizer`, `recipe` or `step` to label itself; Qwen
-checkpoint labels already encode these and are parsed automatically
-(`casf_benchmark.catalog.describe_run`).
-
-Run the pickle → SDF/manifest → materialize → analyze pipeline for all checkpoints,
-core cohort first:
-
-```bash
-export CASF_GENERATION_RESULTS_ROOT=/path/to/gen_results   # holds the manifest's dirs
-export CASF_RUNS_ROOT=/path/to/casf_benchmark_runs         # materialized run outputs
-./scripts/run_casf_batch_all.sh
-```
-
-Both scripts are idempotent — they skip steps whose output already exists, so a
-partial batch can simply be re-run. Per-item logs and `batch_summary.log` land under
-`$CASF_RUNS_ROOT/_logs/`. To run a single item:
-`./scripts/run_casf_batch_item.sh LABEL core|ref PICKLE_DIR` (see its header for
-`SHARD_PARALLEL`, `PB_WORKERS`, `ANALYZE_WORKERS`).
-
-Raw pickles are converted by
-[`scripts/convert_qwen_pickle_to_raw_generation.py`](../scripts/convert_qwen_pickle_to_raw_generation.py),
-which maps generated SMILES back to CASF `ligand_id`s via the intersection mapping CSV.
-
-## Druglike test set
-
-A small hand-picked set of named drugs/candidates with no crystal conformers, so it
-is scored on validity/diversity/energy only — no RMSD recovery. Three steps:
-
-```bash
-export CASF_GENERATION_RESULTS_ROOT=/path/to/gen_results
-export CASF_DRUGLIKE_PICKLE=/path/to/druglike_smi.pickle
-export CASF_EVAL_OUT_DIR=/path/to/druglike_eval
-
-./scripts/run_druglike_eval_batch.sh                      # per-checkpoint CSVs
-python scripts/build_druglike_eval_db.py --eval-dir "$CASF_EVAL_OUT_DIR"
-python scripts/build_druglike_covmat.py \
-  --generation-results-root "$CASF_GENERATION_RESULTS_ROOT" \
-  --druglike-db "$CASF_EVAL_OUT_DIR/druglike_eval.sqlite"
-```
-
-The last step folds in COV/MAT results and publishes `extended_druglike_summary` /
-`extended_druglike_per_molecule` into the extended-analysis sidecar DB, where the
-dashboard shows them as "Druglike summary" and "Druglike per-molecule" tabs.
+The last step publishes `extended_druglike_summary` / `extended_druglike_per_molecule`
+into the extended-analysis sidecar DB. The dashboard shows them under Overview as
+"Druglike summary" and "Druglike per-molecule".
 
 ## Streamlit Cloud
 
@@ -177,14 +124,14 @@ DB you point the sidebar at yourself is never overwritten.
 | Asset | Feeds |
 | --- | --- |
 | `casf_analysis_dashboard.sqlite` (118MB) | the main tabs |
-| `extended_casf_analysis.sqlite` (95MB) | Extended Analysis, including the two druglike tabs |
+| `extended_casf_analysis.sqlite` (95MB) | Extended Analysis, plus the Overview druglike tables |
 
 `casf_per_ligand_long.csv` is a rebuild input for the extended analysis, never read
 by the app, and is deliberately not fetchable.
 
 | Env | Default | Use |
 | --- | --- | --- |
-| `CASF_DASHBOARD_RELEASE` | `dashboard-data-qwen-druglike` | Pin the release tag, so republishing results is a new release plus an env change rather than a code change |
+| `CASF_DASHBOARD_RELEASE` | `dashboard-data-druglike-ots-v2` | Pin the release tag, so republishing results is a new release plus an env change rather than a code change |
 | `CASF_DASHBOARD_RELEASE_REPO` | `YerevaNN/casf-benchmark` | Where the assets live, when the app is served from a mirror |
 
 Set these under *Settings → Secrets* (or *Advanced settings* at deploy time). The
@@ -210,21 +157,6 @@ Optional auto-mirror: add `PERSONAL_MIRROR_PAT` secret → [`.github/workflows/m
 casf-extended-analysis --skip-k-efficiency
 casf-extended-analysis --recompute-k-rmsd --k-workers 8
 ```
-
-K-efficiency and the energy windows read per-conformer SDFs under each run's
-`generation/`, which the bundled run roots under `data/results/runs/` do not carry.
-Point them at fuller copies without rebuilding the dashboard:
-
-```bash
-python scripts/build_generation_root_overrides.py      # probes the weka sources config
-casf-extended-analysis \
-  --generation-root-overrides src/casf_benchmark/config/casf_generation_root_overrides.yaml \
-  --allow-k-efficiency-failures
-```
-
-The generated override map is machine-specific and gitignored. `--allow-k-efficiency-failures`
-keeps the tasks that succeeded and reports the rest in `extended_k_efficiency_failures.csv`
-instead of aborting the whole run.
 
 K-efficiency and the energy windows read per-conformer SDFs under each run's
 `generation/`, which the bundled run roots under `data/results/runs/` do not carry.
