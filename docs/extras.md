@@ -101,6 +101,32 @@ The last step publishes `extended_druglike_summary` / `extended_druglike_per_mol
 into the extended-analysis sidecar DB. The dashboard shows them as a separate
 "Druglike conformer evaluation" block under the main comparison table.
 
+### Druglike K-efficiency
+
+Subsample each method's stored ~1000-conformer pool at K = 10, 50, 100, 500, 1000
+(random without replacement, 3 seeds) and plot molecule-mean and molecule-median
+COV-R/P and MAT-R/P. Figures keep a small comparison panel: Qwen 1.7B FSQ
+(`qwen_1p7b_fsq_bigdata_step47023`), LOQI, NExT-Mol DMT-L, Torsional Diffusion,
+MCF drugs-L, and FlowR. Missing pickles are skipped. RMSD matrices are cached under
+`data/results/cache/druglike_rmsd_matrices/` so reruns only replot.
+
+```bash
+export CASF_DRUGLIKE_PICKLE=/mnt/weka/vtarasov/druglike_smi.pickle
+python scripts/eval_druglike_k_efficiency.py \
+  --ground-truth-pickle "$CASF_DRUGLIKE_PICKLE" \
+  --generation-results-root /mnt/weka/vtarasov/outputs/outputs/gen_results
+```
+
+Writes `data/results/tables/druglike_k_efficiency.csv`,
+`data/results/figures/druglike_k_coverage.png`,
+`data/results/figures/druglike_k_mat.png`,
+`data/results/figures/druglike_k_coverage_median.png`,
+`data/results/figures/druglike_k_mat_median.png`, and
+`extended_druglike_k_efficiency` / `extended_druglike_k_efficiency_per_molecule`
+in the extended sidecar DB. The Streamlit dashboard draws the four K-curves
+(mean/median × coverage/matching) under the druglike tables from
+`extended_druglike_k_efficiency`.
+
 ## Streamlit Cloud
 
 Org repos cannot authorize Streamlit’s GitHub App. Deploy from personal mirror [`MenuaB/casf-benchmark`](https://github.com/MenuaB/casf-benchmark):

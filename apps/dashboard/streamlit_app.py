@@ -49,6 +49,7 @@ release_data = _load_repo_release_data()
 
 
 render_table_help = _load_sibling_module("table_help").render_table_help
+render_druglike_k_charts = _load_sibling_module("druglike_k_charts").render_druglike_k_charts
 
 _DEFAULT_DB = DEFAULT_DASHBOARD_DB
 DEFAULT_DB = Path(os.environ.get("CASF_DASHBOARD_DB", str(_DEFAULT_DB)))
@@ -475,7 +476,7 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-druglike-ots-v2",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-flowr-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-druglike-k-v1"
 
 
 def effective_release_tag() -> str:
@@ -836,6 +837,14 @@ def render_druglike_tables(extended_db_path: Path) -> None:
                 spec["table"],
                 height=DRUGLIKE_TABLE_HEIGHT_PX,
             )
+
+    if "extended_druglike_k_efficiency" in extended_table_names:
+        k_frame = load_table(
+            str(extended_db_path),
+            "extended_druglike_k_efficiency",
+            extended_mtime_ns,
+        )
+        render_druglike_k_charts(k_frame)
 
 
 def render_extended_analysis(extended_db_path: Path) -> None:
