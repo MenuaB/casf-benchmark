@@ -98,8 +98,8 @@ python scripts/build_druglike_covmat.py \
 ```
 
 The last step publishes `extended_druglike_summary` / `extended_druglike_per_molecule`
-into the extended-analysis sidecar DB. The dashboard shows them under Overview as
-"Druglike summary" and "Druglike per-molecule".
+into the extended-analysis sidecar DB. The dashboard shows them as a separate
+"Druglike conformer evaluation" block under the main comparison table.
 
 ## Streamlit Cloud
 
@@ -124,7 +124,7 @@ DB you point the sidebar at yourself is never overwritten.
 | Asset | Feeds |
 | --- | --- |
 | `casf_analysis_dashboard.sqlite` (118MB) | the main tabs |
-| `extended_casf_analysis.sqlite` (95MB) | Extended Analysis, plus the Overview druglike tables |
+| `extended_casf_analysis.sqlite` (95MB) | Extended Analysis, plus the main-page druglike tables |
 
 `casf_per_ligand_long.csv` is a rebuild input for the extended analysis, never read
 by the app, and is deliberately not fetchable.

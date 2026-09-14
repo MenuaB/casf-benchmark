@@ -12,19 +12,40 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from casf_benchmark import release_data
 from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, DEFAULT_EXTENDED_DB as _DEFAULT_EXTENDED_DB
 
 
-def _load_sibling_module(module_name: str):
-    """Load a .py sitting next to this Streamlit entrypoint (Cloud-safe)."""
-    path = Path(__file__).resolve().parent / f"{module_name}.py"
+def _load_module_from_path(module_name: str, path: Path):
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load {module_name} from {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_sibling_module(module_name: str):
+    """Load a .py sitting next to this Streamlit entrypoint (Cloud-safe)."""
+    return _load_module_from_path(
+        module_name, Path(__file__).resolve().parent / f"{module_name}.py"
+    )
+
+
+def _load_repo_release_data():
+    """Load release_data.py from this checkout, not a stale Cloud wheel.
+
+    Community Cloud often keeps an older `casf_benchmark` install after git pull.
+    The checkout copy has the /tmp fetch and `latest` URL alias; the wheel may not.
+    """
+    path = Path(__file__).resolve().parents[2] / "src" / "casf_benchmark" / "release_data.py"
+    if path.is_file():
+        return _load_module_from_path("_casf_release_data_src", path)
+    from casf_benchmark import release_data as packaged
+
+    return packaged
+
+
+release_data = _load_repo_release_data()
 
 
 render_table_help = _load_sibling_module("table_help").render_table_help
@@ -373,15 +394,14 @@ EXTENDED_TABLES = {
     },
 }
 
-# Rendered directly under the main comparison table on the Overview tab, not
-# among the Extended Analysis tabs, since they carry their own row shape
-# (one row per checkpoint/molecule, no ligand_set/tier/family) rather than
-# the comparison_rows-derived stratification the extended filters target.
+# Separate from Extended Analysis: one row per checkpoint/molecule, not the
+# ligand_set/tier/family stratification those filters target.
 DRUGLIKE_TABLES: dict[str, dict[str, object]] = {
     "Druglike summary": {
         "table": "extended_druglike_summary",
         "columns": [
             "label",
+            "display_label",
             # Present once the table is rebuilt for a non-Qwen generator; harmless
             # while absent, since display_table() keeps only the columns that exist.
             "generator",
@@ -431,6 +451,10 @@ DRUGLIKE_TABLES: dict[str, dict[str, object]] = {
 }
 
 TABLE_HEIGHT_PX = 520
+# Shorter than Extended Analysis so the druglike block sits on the first screen
+# instead of only its column headers peeking under the comparison grid.
+COMPARISON_TABLE_HEIGHT_PX = 320
+DRUGLIKE_TABLE_HEIGHT_PX = 420
 
 # Serialises the release fetch: Streamlit may run several script threads at once
 # (a browser refresh mid-download is enough), and two of them writing the same
@@ -690,7 +714,13 @@ def _apply_table_view_controls(data: pd.DataFrame, cols: list[str], name: str) -
     return filtered.reset_index(drop=True), visible, color_by_value
 
 
-def display_table(frame: pd.DataFrame, columns: list[str], name: str) -> None:
+def display_table(
+    frame: pd.DataFrame,
+    columns: list[str],
+    name: str,
+    *,
+    height: int = TABLE_HEIGHT_PX,
+) -> None:
     cols = [column for column in columns if column in frame.columns]
     color_by_value = False
     if not cols:
@@ -705,7 +735,7 @@ def display_table(frame: pd.DataFrame, columns: list[str], name: str) -> None:
         column_config=_build_column_config(data, visible_cols),
         column_order=visible_cols,
         use_container_width=True,
-        height=TABLE_HEIGHT_PX,
+        height=height,
         hide_index=True,
     )
     st.download_button(
@@ -751,10 +781,35 @@ def sidebar_extended_db_path(db_path: Path, table_names: set[str]) -> Path:
         ).expanduser()
 
 
+def _preferred_extended_db_path(extended_db_path: Path, required_tables: set[str]) -> Path:
+    """Fetch the sidecar if needed, then use the first DB that has the tables.
+
+    Streamlit Cloud can land the main sqlite while the sidecar fetch fails or is
+    interrupted. The sidebar then points at a file with no `extended_*` tables.
+    """
+    sidecar = Path(str(DEFAULT_EXTENDED_DB)).expanduser()
+    ensure_db_available(extended_db_path)
+    if sidecar != extended_db_path:
+        ensure_db_available(sidecar)
+
+    candidates = [extended_db_path]
+    if sidecar not in candidates:
+        candidates.append(sidecar)
+    for path in candidates:
+        if not path.exists():
+            continue
+        names = load_table_names(str(path), path.stat().st_mtime_ns)
+        if any(name in names for name in required_tables):
+            return path
+    return extended_db_path
+
+
 def render_druglike_tables(extended_db_path: Path) -> None:
     st.divider()
-    st.subheader("Druglike conformer evaluation")
+    st.header("Druglike conformer evaluation")
 
+    required = {spec["table"] for spec in DRUGLIKE_TABLES.values()}
+    extended_db_path = _preferred_extended_db_path(extended_db_path, required)
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}")
         return
@@ -775,13 +830,20 @@ def render_druglike_tables(extended_db_path: Path) -> None:
         spec = DRUGLIKE_TABLES[label]
         with tab:
             frame = load_table(str(extended_db_path), spec["table"], extended_mtime_ns)
-            display_table(frame, spec["columns"], spec["table"])
+            display_table(
+                frame,
+                spec["columns"],
+                spec["table"],
+                height=DRUGLIKE_TABLE_HEIGHT_PX,
+            )
 
 
 def render_extended_analysis(extended_db_path: Path) -> None:
     st.divider()
     st.header("Extended Analysis")
 
+    required = {spec["table"] for spec in EXTENDED_TABLES.values()}
+    extended_db_path = _preferred_extended_db_path(extended_db_path, required)
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}")
         return
@@ -957,11 +1019,14 @@ def main() -> None:
     if table_name == "funnel":
         table_frame = select_view(comparison_rows, ligand_set, tier, family)
         table_frame = table_frame[table_frame["row_type"].astype(str) == "generation"]
-    display_table(table_frame, table_columns, table_name)
+    display_table(
+        table_frame,
+        table_columns,
+        table_name,
+        height=COMPARISON_TABLE_HEIGHT_PX,
+    )
     extended_db_path = sidebar_extended_db_path(db_path, table_names)
-    if table_label == "Overview":
-        render_druglike_tables(extended_db_path)
-
+    render_druglike_tables(extended_db_path)
     render_extended_analysis(extended_db_path)
 
 
