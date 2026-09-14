@@ -27,7 +27,10 @@ deliberately not listed here.
 
 from __future__ import annotations
 
+import errno
 import os
+import shutil
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -89,10 +92,12 @@ def write_release_pin(tag: str | None = None) -> None:
 def invalidate_stale_release_assets() -> bool:
     """Delete cached release DBs when the active tag changed.
 
-    Returns True when any default release asset was removed.
+    A missing pin does not wipe files: that is the mid-fetch state on
+    Streamlit Cloud (first DB landed, second still downloading). Returns
+    True when any default release asset was removed.
     """
-    tag = release_tag()
-    if read_release_pin() == tag:
+    pin = read_release_pin()
+    if pin is None or pin == release_tag():
         return False
 
     removed = False
@@ -105,8 +110,14 @@ def invalidate_stale_release_assets() -> bool:
 
 
 def mark_release_assets_current() -> None:
-    """Record the active release tag once all default assets are present."""
-    if all(path.is_file() for path in RELEASE_ASSET_PATHS):
+    """Record the active tag after any default asset lands on disk.
+
+    The pin is written per successful fetch, not only when both DBs exist.
+    Otherwise a Streamlit rerun between the two downloads treats the first
+    file as stale and deletes it, then the second rename races a `.part`
+    that is already gone.
+    """
+    if any(path.is_file() for path in RELEASE_ASSET_PATHS):
         write_release_pin()
 
 
@@ -144,13 +155,30 @@ def is_release_asset(path: Path) -> bool:
     return any(candidate == _normalize(default) for default in RELEASE_ASSET_PATHS)
 
 
+def _publish_download(src: Path, dest: Path) -> None:
+    """Move a completed download into `dest`, including across filesystems."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(src, dest)
+        return
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            # Streamlit Cloud can raise ENOENT on rename if the app reran and
+            # unlinked the staging file; if dest already landed, we are done.
+            if isinstance(error, FileNotFoundError) and dest.is_file():
+                src.unlink(missing_ok=True)
+                return
+            raise
+    shutil.move(str(src), str(dest))
+
+
 def fetch_release_asset(
     path: Path,
     *,
     tag: str | None = None,
     repo: str | None = None,
     progress: ProgressCallback | None = None,
-    timeout: float = 60.0,
+    timeout: float = 300.0,
 ) -> bool:
     """Download `path` from the pinned release; return True if a download happened.
 
@@ -158,9 +186,10 @@ def fetch_release_asset(
     one of `RELEASE_ASSET_PATHS`, which is what keeps Weka and local rebuilds working
     untouched.
 
-    Writes to a sibling `.part` file and renames only on success, so an interrupted
-    or failed fetch never leaves a truncated SQLite file behind that a later run
-    would mistake for a complete download.
+    The body is written under the system temp directory (not next to the SQLite
+    in the app tree). Streamlit Cloud watches the repo and reruns the script
+    when a sibling `.part` appears, which used to make `Path.replace` fail with
+    ENOENT on the extended DB.
     """
     if path.exists():
         return False
@@ -169,15 +198,16 @@ def fetch_release_asset(
 
     url = asset_url(path.name, tag=tag, repo=repo)
     path.parent.mkdir(parents=True, exist_ok=True)
-    part = path.with_name(path.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    fd, tmp_name = tempfile.mkstemp(prefix=f"{path.name}.", suffix=".part")
+    tmp = Path(tmp_name)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            total = int(response.headers.get("Content-Length") or 0)
-            downloaded = 0
-            if progress is not None:
-                progress(downloaded, total)
-            with part.open("wb") as handle:
+        with os.fdopen(fd, "wb") as handle:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                total = int(response.headers.get("Content-Length") or 0)
+                downloaded = 0
+                if progress is not None:
+                    progress(downloaded, total)
                 while True:
                     chunk = response.read(CHUNK_BYTES)
                     if not chunk:
@@ -186,8 +216,10 @@ def fetch_release_asset(
                     downloaded += len(chunk)
                     if progress is not None:
                         progress(downloaded, total)
-        part.replace(path)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _publish_download(tmp, path)
     except BaseException:
-        part.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         raise
     return True

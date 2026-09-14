@@ -466,15 +466,16 @@ def read_release_pin() -> str | None:
 
 
 def mark_release_assets_current() -> None:
-    if all(path.is_file() for path in release_data.RELEASE_ASSET_PATHS):
-        path = release_pin_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{effective_release_tag()}\n", encoding="utf-8")
+    # Pin after the first asset lands so a rerun does not wipe it as stale.
+    path = release_pin_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{effective_release_tag()}\n", encoding="utf-8")
 
 
 def invalidate_stale_release_assets() -> None:
     tag = effective_release_tag()
-    if read_release_pin() == tag:
+    pin = read_release_pin()
+    if pin is None or pin == tag:
         return
     for asset_path in release_data.RELEASE_ASSET_PATHS:
         if asset_path.exists() and release_data.is_release_asset(asset_path):
@@ -519,10 +520,13 @@ def ensure_db_available(path: Path) -> None:
             elif path.exists():
                 mark_release_assets_current()
     except Exception as error:  # noqa: BLE001 - surfaced to the user, not swallowed
-        st.error(
-            f"Could not fetch {path.name} from release `{tag}` "
-            f"of {release_data.release_repo()}: {error}"
-        )
+        if path.exists():
+            mark_release_assets_current()
+        else:
+            st.error(
+                f"Could not fetch {path.name} from release `{tag}` "
+                f"of {release_data.release_repo()}: {error}"
+            )
     finally:
         bar.empty()
         status.empty()
@@ -731,12 +735,18 @@ def default_extended_db_path(db_path: Path, table_names: set[str]) -> Path:
     return Path(override if override else str(DEFAULT_EXTENDED_DB))
 
 
-def render_druglike_tables(db_path: Path, table_names: set[str]) -> None:
+def sidebar_extended_db_path(db_path: Path, table_names: set[str]) -> Path:
+    default_path = default_extended_db_path(db_path, table_names)
+    with st.sidebar.expander("Extended analysis", expanded=False):
+        return Path(
+            st.text_input("Extended DB", str(default_path), key="extended_db_path")
+        ).expanduser()
+
+
+def render_druglike_tables(extended_db_path: Path) -> None:
     st.divider()
     st.subheader("Druglike conformer evaluation")
 
-    extended_db_path = default_extended_db_path(db_path, table_names)
-    ensure_db_available(extended_db_path)
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}")
         return
@@ -760,17 +770,10 @@ def render_druglike_tables(db_path: Path, table_names: set[str]) -> None:
             display_table(frame, spec["columns"], spec["table"])
 
 
-def render_extended_analysis(db_path: Path, table_names: set[str]) -> None:
+def render_extended_analysis(extended_db_path: Path) -> None:
     st.divider()
     st.header("Extended Analysis")
 
-    default_path = default_extended_db_path(db_path, table_names)
-    with st.sidebar.expander("Extended analysis", expanded=False):
-        extended_db_path = Path(
-            st.text_input("Extended DB", str(default_path), key="extended_db_path")
-        ).expanduser()
-
-    ensure_db_available(extended_db_path)
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}")
         return
@@ -947,10 +950,11 @@ def main() -> None:
         table_frame = select_view(comparison_rows, ligand_set, tier, family)
         table_frame = table_frame[table_frame["row_type"].astype(str) == "generation"]
     display_table(table_frame, table_columns, table_name)
+    extended_db_path = sidebar_extended_db_path(db_path, table_names)
     if table_label == "Overview":
-        render_druglike_tables(db_path, table_names)
+        render_druglike_tables(extended_db_path)
 
-    render_extended_analysis(db_path, table_names)
+    render_extended_analysis(extended_db_path)
 
 
 if __name__ == "__main__":
