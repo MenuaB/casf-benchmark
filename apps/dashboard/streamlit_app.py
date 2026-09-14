@@ -439,11 +439,19 @@ _FETCH_LOCK = threading.Lock()
 
 # Kept in the Streamlit entrypoint so Community Cloud picks it up even when an
 # older editable install of casf-benchmark is still cached in the runtime image.
-# Any tag below now forces forward to "latest" rather than to a frozen release,
-# since "latest" is the whole point -- no future secret edit or code deploy
-# should be needed just to pick up a new dashboard-data-* release.
-_LEGACY_RELEASE_TAGS = frozenset({"dashboard-data-qwen-druglike", "dashboard-data-druglike-ots-v1"})
-_FORCED_RELEASE_TAG = release_data.LATEST_TAG
+# Do not read new attributes off `release_data` here: Cloud crashed on
+# `release_data.LATEST_TAG` while still serving the pre-latest package.
+# Stale `release_tag()` still returns ots-v2; force a concrete tag that the
+# old `.../releases/download/{tag}/...` URL can fetch (the `latest` alias
+# exists only in a newer package).
+_LEGACY_RELEASE_TAGS = frozenset(
+    {
+        "dashboard-data-qwen-druglike",
+        "dashboard-data-druglike-ots-v1",
+        "dashboard-data-druglike-ots-v2",
+    }
+)
+_FORCED_RELEASE_TAG = "dashboard-data-flowr-v1"
 
 
 def effective_release_tag() -> str:
