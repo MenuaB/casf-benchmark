@@ -130,6 +130,12 @@ families:
     core_root: /mnt/weka/mbedrosian/codex_dir/mcf_drugs_l/generations/casf16_core_mcf_drugs_l_1k
     ref_root: /mnt/weka/mbedrosian/codex_dir/mcf_drugs_l/generations/casf16_ref_mcf_drugs_l_1k
 
+  - id: flowr_raw
+    display_label: "FlowR"
+    method_prefix: flowr_raw
+    core_root: /mnt/weka/vtarasov/code/flowr_root/casf_benchmark_runs/flowr_core
+    ref_root: /mnt/weka/vtarasov/code/flowr_root/casf_benchmark_runs/flowr_ref
+
   # Core-only, deliberately: unlike the other ten checkpoints below, the CASF16-ref
   # analysis for this one has never produced tables, so there is no ref result to
   # point at and claiming a ref_root here would show an empty ref view rather than an

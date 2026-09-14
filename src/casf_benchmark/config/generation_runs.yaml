@@ -133,3 +133,10 @@ runs:
     recipe: "upstream drugs-L checkpoint"
     cohorts:
       druglike: /mnt/weka/mbedrosian/codex_dir/druglike_off_the_shelf/gen_results/mcf_drugs_l_druglike
+
+  - label: flowr_druglike
+    generator: FlowR
+    display_label: "FlowR"
+    recipe: "flowr_root_v2.2 checkpoint"
+    cohorts:
+      druglike: /mnt/weka/vtarasov/code/flowr_root/gen_results/flowr_druglike

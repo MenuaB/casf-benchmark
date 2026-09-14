@@ -59,6 +59,16 @@ sources:
     ligand_set: ref
     root: /mnt/weka/mbedrosian/codex_dir/mcf_drugs_l/generations/casf16_ref_mcf_drugs_l_1k
 
+  - run_id: flowr_raw_core
+    label: "FlowR (core)"
+    ligand_set: core
+    root: /mnt/weka/vtarasov/code/flowr_root/casf_benchmark_runs/flowr_core
+
+  - run_id: flowr_raw_ref
+    label: "FlowR (ref)"
+    ligand_set: ref
+    root: /mnt/weka/vtarasov/code/flowr_root/casf_benchmark_runs/flowr_ref
+
   - run_id: qwen_0p6b_4e_from_bigdata_step29600_core
     label: "Qwen 0.6B 4e from bigdata step 29600 (core)"
     ligand_set: core

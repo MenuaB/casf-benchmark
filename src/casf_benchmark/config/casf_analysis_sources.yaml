@@ -54,6 +54,16 @@ sources:
     ligand_set: ref
     root: data/results/runs/mcf_drugs_l_ref
 
+  - run_id: flowr_raw_core
+    label: "FlowR (core)"
+    ligand_set: core
+    root: data/results/runs/flowr_raw_core
+
+  - run_id: flowr_raw_ref
+    label: "FlowR (ref)"
+    ligand_set: ref
+    root: data/results/runs/flowr_raw_ref
+
   - run_id: qwen_0p6b_4e_from_bigdata_step29600_core
     label: "Qwen 0.6B 4e from bigdata step 29600 (core)"
     ligand_set: core
