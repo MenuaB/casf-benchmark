@@ -8,10 +8,14 @@ A fresh clone (Streamlit Community Cloud, most notably) has neither, and this
 module is what lets the dashboard serve the final analysis there with no Weka or
 SSH access.
 
-Which results the dashboard serves is pinned by environment, so republishing is a
-new release plus an env change rather than a code change:
+By default the dashboard always serves whatever release GitHub currently marks
+"latest" (the most recent non-draft, non-prerelease release) -- so publishing a
+new `dashboard-data-*` release and marking it latest (the default for
+`gh release create`) is enough to update every deployment with no env change and
+no redeploy of code. `CASF_DASHBOARD_RELEASE` overrides this to pin a specific
+tag instead, e.g. to roll back or to compare an older result set:
 
-  CASF_DASHBOARD_RELEASE       release tag to pull from (default below)
+  CASF_DASHBOARD_RELEASE       release tag to pull from ("latest" by default)
   CASF_DASHBOARD_RELEASE_REPO  `owner/name` holding the release (default below);
                                the app itself may be served from a mirror, while
                                the assets stay on the canonical repository
@@ -30,12 +34,18 @@ from typing import Callable
 
 from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, DEFAULT_EXTENDED_DB
 
-DEFAULT_RELEASE_TAG = "dashboard-data-druglike-ots-v1"
+#: Sentinel meaning "whatever release GitHub currently marks latest" -- also a
+#: literal GitHub URL keyword (`.../releases/latest/download/{asset}`), so no
+#: extra resolution step or API call is needed to follow it.
+LATEST_TAG = "latest"
+
+DEFAULT_RELEASE_TAG = LATEST_TAG
 DEFAULT_RELEASE_REPO = "YerevaNN/casf-benchmark"
 
-#: Older Streamlit Cloud secrets may still pin a pre-OTS release. Ignore them so a
-#: code deploy can move Community Cloud forward without editing secrets in the UI.
-LEGACY_RELEASE_TAGS = frozenset({"dashboard-data-qwen-druglike"})
+#: Tags a Streamlit Cloud secret may still pin from before "latest" became the
+#: default. Ignore them so results move forward with no edit to the secret --
+#: pin to a concrete tag deliberately (e.g. to roll back) if you don't want that.
+LEGACY_RELEASE_TAGS = frozenset({"dashboard-data-qwen-druglike", "dashboard-data-druglike-ots-v1"})
 
 #: The only paths this module will ever write. Keyed by location rather than by
 #: bare filename so that a DB the operator pointed us at elsewhere is never
@@ -106,11 +116,17 @@ def release_repo() -> str:
 
 
 def asset_url(asset_name: str, tag: str | None = None, repo: str | None = None) -> str:
-    """Public download URL for one asset of the pinned release."""
-    return (
-        f"https://github.com/{repo or release_repo()}"
-        f"/releases/download/{tag or release_tag()}/{asset_name}"
-    )
+    """Public download URL for one asset of the pinned release.
+
+    `LATEST_TAG` resolves via GitHub's own `.../releases/latest/download/{asset}`
+    alias -- a plain redirect on the regular github.com host, not the api.github.com
+    REST API, so it costs no API rate-limit quota even under heavy dashboard traffic.
+    """
+    resolved_tag = tag or release_tag()
+    repo_name = repo or release_repo()
+    if resolved_tag == LATEST_TAG:
+        return f"https://github.com/{repo_name}/releases/latest/download/{asset_name}"
+    return f"https://github.com/{repo_name}/releases/download/{resolved_tag}/{asset_name}"
 
 
 def _normalize(path: Path) -> Path:

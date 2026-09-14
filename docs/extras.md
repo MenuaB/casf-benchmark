@@ -184,15 +184,18 @@ by the app, and is deliberately not fetchable.
 
 | Env | Default | Use |
 | --- | --- | --- |
-| `CASF_DASHBOARD_RELEASE` | `dashboard-data-qwen-druglike` | Pin the release tag, so republishing results is a new release plus an env change rather than a code change |
+| `CASF_DASHBOARD_RELEASE` | `latest` | Which release to pull from. `latest` follows GitHub's own "latest release" pointer (via `.../releases/latest/download/{asset}`, no API call), so a new `dashboard-data-*` release goes live everywhere with no secret edit and no redeploy. Set to a concrete tag to pin/roll back instead. |
 | `CASF_DASHBOARD_RELEASE_REPO` | `YerevaNN/casf-benchmark` | Where the assets live, when the app is served from a mirror |
 
-Set these under *Settings → Secrets* (or *Advanced settings* at deploy time). The
-sidebar shows the tag in effect, so it is always visible which results are on screen.
+Set these under *Settings → Secrets* (or *Advanced settings* at deploy time) only
+when you want to pin away from `latest`. The sidebar shows the tag in effect, so
+it is always visible which results are on screen.
 
 To publish a new set: rebuild the DBs (see [`scripts/rebuild_dashboard_weka.sh`](../scripts/rebuild_dashboard_weka.sh)),
-attach both to a new `dashboard-data-<name>` release, then point
-`CASF_DASHBOARD_RELEASE` at that tag.
+attach both to a new `dashboard-data-<name>` release (`gh release create` marks it
+"latest" by default, which is all that's needed), and every deployment picks it up
+on its next restart. Only set `CASF_DASHBOARD_RELEASE` if you deliberately want to
+pin to something other than latest.
 
 Sync mirror after YerevaNN pushes:
 

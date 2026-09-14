@@ -439,8 +439,11 @@ _FETCH_LOCK = threading.Lock()
 
 # Kept in the Streamlit entrypoint so Community Cloud picks it up even when an
 # older editable install of casf-benchmark is still cached in the runtime image.
-_LEGACY_RELEASE_TAGS = frozenset({"dashboard-data-qwen-druglike"})
-_FORCED_RELEASE_TAG = "dashboard-data-druglike-ots-v1"
+# Any tag below now forces forward to "latest" rather than to a frozen release,
+# since "latest" is the whole point -- no future secret edit or code deploy
+# should be needed just to pick up a new dashboard-data-* release.
+_LEGACY_RELEASE_TAGS = frozenset({"dashboard-data-qwen-druglike", "dashboard-data-druglike-ots-v1"})
+_FORCED_RELEASE_TAG = release_data.LATEST_TAG
 
 
 def effective_release_tag() -> str:

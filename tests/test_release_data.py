@@ -65,6 +65,30 @@ def test_legacy_release_tag_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     assert release_data.release_tag() == release_data.DEFAULT_RELEASE_TAG
 
 
+def test_a_formerly_pinned_default_now_falls_back_to_latest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # dashboard-data-druglike-ots-v1 used to be DEFAULT_RELEASE_TAG itself; a secret
+    # still holding it should move forward to "latest" rather than stay frozen.
+    monkeypatch.setenv("CASF_DASHBOARD_RELEASE", "dashboard-data-druglike-ots-v1")
+    assert release_data.release_tag() == release_data.LATEST_TAG
+
+
+def test_default_release_tag_is_latest() -> None:
+    assert release_data.DEFAULT_RELEASE_TAG == release_data.LATEST_TAG
+
+
+def test_asset_url_for_latest_uses_the_latest_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CASF_DASHBOARD_RELEASE", raising=False)
+    assert release_data.asset_url("x.sqlite", repo="o/r") == (
+        "https://github.com/o/r/releases/latest/download/x.sqlite"
+    )
+
+
+def test_asset_url_for_a_pinned_tag_uses_the_tagged_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert release_data.asset_url("x.sqlite", tag="dashboard-data-2027", repo="o/r") == (
+        "https://github.com/o/r/releases/download/dashboard-data-2027/x.sqlite"
+    )
+
+
 def test_invalidate_stale_release_assets_deletes_cached_dbs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
