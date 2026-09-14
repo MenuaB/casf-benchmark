@@ -65,6 +65,34 @@ def test_legacy_release_tag_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     assert release_data.release_tag() == release_data.DEFAULT_RELEASE_TAG
 
 
+def test_invalidate_without_pin_keeps_existing_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dashboard = tmp_path / "casf_analysis_dashboard.sqlite"
+    extended = tmp_path / "extended_casf_analysis.sqlite"
+    dashboard.write_bytes(b"first of two")
+    monkeypatch.setattr(release_data, "RELEASE_ASSET_PATHS", (dashboard, extended))
+    monkeypatch.setattr(release_data, "DEFAULT_DASHBOARD_DB", dashboard)
+    monkeypatch.setattr(release_data, "release_pin_path", lambda: tmp_path / ".dashboard_release_pin")
+
+    assert release_data.invalidate_stale_release_assets() is False
+    assert dashboard.read_bytes() == b"first of two"
+
+
+def test_mark_release_assets_current_pins_after_the_first_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dashboard = tmp_path / "casf_analysis_dashboard.sqlite"
+    extended = tmp_path / "extended_casf_analysis.sqlite"
+    dashboard.write_bytes(b"ok")
+    pin = tmp_path / ".dashboard_release_pin"
+    monkeypatch.setattr(release_data, "RELEASE_ASSET_PATHS", (dashboard, extended))
+    monkeypatch.setattr(release_data, "release_pin_path", lambda: pin)
+
+    release_data.mark_release_assets_current()
+    assert pin.read_text(encoding="utf-8").strip() == release_data.DEFAULT_RELEASE_TAG
+
+
 def test_invalidate_stale_release_assets_deletes_cached_dbs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

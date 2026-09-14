@@ -465,15 +465,16 @@ def read_release_pin() -> str | None:
 
 
 def mark_release_assets_current() -> None:
-    if all(path.is_file() for path in release_data.RELEASE_ASSET_PATHS):
-        path = release_pin_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{effective_release_tag()}\n", encoding="utf-8")
+    # Pin after the first asset lands so a rerun does not wipe it as stale.
+    path = release_pin_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{effective_release_tag()}\n", encoding="utf-8")
 
 
 def invalidate_stale_release_assets() -> None:
     tag = effective_release_tag()
-    if read_release_pin() == tag:
+    pin = read_release_pin()
+    if pin is None or pin == tag:
         return
     for asset_path in release_data.RELEASE_ASSET_PATHS:
         if asset_path.exists() and release_data.is_release_asset(asset_path):
@@ -518,10 +519,13 @@ def ensure_db_available(path: Path) -> None:
             elif path.exists():
                 mark_release_assets_current()
     except Exception as error:  # noqa: BLE001 - surfaced to the user, not swallowed
-        st.error(
-            f"Could not fetch {path.name} from release `{tag}` "
-            f"of {release_data.release_repo()}: {error}"
-        )
+        if path.exists():
+            mark_release_assets_current()
+        else:
+            st.error(
+                f"Could not fetch {path.name} from release `{tag}` "
+                f"of {release_data.release_repo()}: {error}"
+            )
     finally:
         bar.empty()
         status.empty()
@@ -742,7 +746,6 @@ def render_druglike_tables(extended_db_path: Path) -> None:
     st.divider()
     st.subheader("Druglike conformer evaluation")
 
-    ensure_db_available(extended_db_path)
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}")
         return
@@ -770,7 +773,6 @@ def render_extended_analysis(extended_db_path: Path) -> None:
     st.divider()
     st.header("Extended Analysis")
 
-    ensure_db_available(extended_db_path)
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}")
         return

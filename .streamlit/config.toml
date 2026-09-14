@@ -4,6 +4,9 @@ primaryColor = "#2563eb"
 
 [server]
 headless = true
+# Release-asset downloads land under data/results/. Watching that tree reruns the
+# app mid-fetch and races the atomic rename (ENOENT on the .part file).
+folderWatchBlacklist = ["data/results"]
 
 [browser]
 gatherUsageStats = false
