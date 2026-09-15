@@ -65,6 +65,40 @@ def embed_stereoisomer(smiles: str, seed: int = 7) -> Chem.Mol:
     return mol
 
 
+def write_simple_mol2(mol: Chem.Mol, path: Path) -> None:
+    """RDKit 2026 has MolFromMol2File but no MolToMol2File."""
+    conf = mol.GetConformer()
+    type_map = {1: "H", 6: "C.3", 7: "N.4", 8: "O.3", 9: "F"}
+    lines = [
+        "@<TRIPOS>MOLECULE",
+        mol.GetProp("_Name") if mol.HasProp("_Name") else "lig",
+        f"{mol.GetNumAtoms()} {mol.GetNumBonds()} 1 0 0",
+        "SMALL",
+        "NO_CHARGES",
+        "",
+        "@<TRIPOS>ATOM",
+    ]
+    for atom in mol.GetAtoms():
+        pos = conf.GetAtomPosition(atom.GetIdx())
+        sybyl = type_map.get(atom.GetAtomicNum(), atom.GetSymbol())
+        lines.append(
+            f"{atom.GetIdx() + 1:>7} {atom.GetSymbol()}{atom.GetIdx() + 1:<8} "
+            f"{pos.x:10.4f} {pos.y:10.4f} {pos.z:10.4f} {sybyl:<5} 1 LIG       0.0000"
+        )
+    lines.append("@<TRIPOS>BOND")
+    order = {
+        Chem.BondType.SINGLE: "1",
+        Chem.BondType.DOUBLE: "2",
+        Chem.BondType.TRIPLE: "3",
+    }
+    for idx, bond in enumerate(mol.GetBonds(), start=1):
+        lines.append(
+            f"{idx:>6} {bond.GetBeginAtomIdx() + 1:>5} {bond.GetEndAtomIdx() + 1:>5} "
+            f"{order.get(bond.GetBondType(), '1')}"
+        )
+    path.write_text("\n".join(lines) + "\n")
+
+
 def write_sdf(path: Path, mols: list[Chem.Mol]) -> None:
     writer = Chem.SDWriter(str(path))
     for mol in mols:
@@ -174,7 +208,7 @@ def test_mol2_fallback_rejected_when_stereo_disagrees(tmp_path):
     empty_root = tmp_path / "empty"
     empty_root.mkdir()
     mol2_path = tmp_path / "crystal.mol2"
-    Chem.MolToMol2File(mol_b, str(mol2_path))
+    write_simple_mol2(mol_b, mol2_path)
     ref, source = load_torsion_ref(
         GROUP,
         MOL_ID,
