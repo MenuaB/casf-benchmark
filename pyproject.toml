@@ -35,6 +35,7 @@ casf-generate-conformer-sets = "casf_benchmark.generation.conformer_sets:main"
 casf-launch-parallel = "casf_benchmark.cli.launch_parallel:main"
 casf-match-casf16-chembl3d = "casf_benchmark.cli.match_casf16_chembl3d:main"
 casf-materialize-generation-sets = "casf_benchmark.cli.materialize_generation_sets:main"
+casf-plot-conformer-report = "casf_benchmark.cli.plot_conformer_report:main"
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

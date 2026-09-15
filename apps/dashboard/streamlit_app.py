@@ -50,6 +50,7 @@ release_data = _load_repo_release_data()
 
 
 render_table_help = _load_sibling_module("table_help").render_table_help
+render_report_analysis = _load_sibling_module("report_analysis_charts").render_report_analysis
 render_druglike_k_charts = _load_sibling_module("druglike_k_charts").render_druglike_k_charts
 render_threshold_charts = _load_sibling_module("threshold_charts").render_threshold_charts
 
@@ -57,6 +58,19 @@ _DEFAULT_DB = DEFAULT_DASHBOARD_DB
 DEFAULT_DB = Path(os.environ.get("CASF_DASHBOARD_DB", str(_DEFAULT_DB)))
 DEFAULT_EXTENDED_DB = Path(os.environ.get("CASF_EXTENDED_DB", str(_DEFAULT_EXTENDED_DB)))
 TIERS = ("fixed", "dynamic", "chembl_count")
+QWEN_DASHBOARD_LABELS = {
+    "qwen_0p6b_bigdata": "Qwen 0.6B bigdata",
+    "qwen_0p6b_bigdata_to_revisited": "Qwen 0.6B bigdata→revisited",
+    "qwen_0p6b_fsq": "Qwen 0.6B fsq",
+    "qwen_0p6b_fsq_bigdata_pretrain": "Qwen 0.6B fsq+bigdata-pretrain",
+    "qwen_1p7b_bigdata": "Qwen 1.7B bigdata",
+    "qwen_1p7b_bigdata_to_revisited": "Qwen 1.7B bigdata→revisited",
+    "qwen_1p7b_fsq": "Qwen 1.7B fsq",
+    "qwen_1p7b_fsq_bigdata_pretrain": "Qwen 1.7B fsq+bigdata-pretrain",
+    "qwen_1p7b_revisited": "Qwen 1.7B revisited",
+    "qwen_4b_bigdata": "Qwen 4B bigdata",
+    "qwen_4b_revisited": "Qwen 4B revisited",
+}
 BREAKDOWN_LABELS = {
     "Total": "total",
     "Rotatable bonds": "rotatable_bonds",
@@ -598,11 +612,39 @@ def drop_hidden_core_rows(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.loc[keep].reset_index(drop=True)
 
 
+def filter_public_methods(frame: pd.DataFrame) -> pd.DataFrame:
+    """Keep the public Qwen shortlist while preserving every non-Qwen row."""
+
+    if frame.empty:
+        return frame.copy()
+    out = frame.copy()
+    family = (
+        out["family"].fillna("").astype(str)
+        if "family" in out.columns
+        else pd.Series("", index=out.index, dtype=str)
+    )
+    is_qwen = family.str.startswith("qwen_")
+    for column in ("display_label", "method", "source"):
+        if column in out.columns:
+            is_qwen |= out[column].fillna("").astype(str).str.contains(
+                r"qwen",
+                case=False,
+                regex=True,
+            )
+    out = out[~is_qwen | family.isin(QWEN_DASHBOARD_LABELS)].copy()
+    if "display_label" in out.columns and "family" in out.columns:
+        public_labels = out["family"].map(QWEN_DASHBOARD_LABELS)
+        has_public_label = public_labels.notna()
+        out.loc[has_public_label, "display_label"] = public_labels[has_public_label]
+    return out
+
+
 @st.cache_data(show_spinner=False)
 def load_table(db_path: str, table: str, db_mtime_ns: int) -> pd.DataFrame:
     del db_mtime_ns
     with sqlite3.connect(db_path) as connection:
-        return pd.read_sql_query(f'SELECT * FROM "{table}"', connection)
+        frame = pd.read_sql_query(f'SELECT * FROM "{table}"', connection)
+    return filter_public_methods(frame)
 
 
 @st.cache_data(show_spinner=False)
@@ -957,6 +999,7 @@ def main() -> None:
     table_names = load_table_names(str(db_path), db_mtime_ns)
     comparison_rows = drop_hidden_core_rows(load_table(str(db_path), "comparison_rows", db_mtime_ns))
     comparison_strata = drop_hidden_core_rows(load_table(str(db_path), "comparison_strata", db_mtime_ns))
+    per_ligand = drop_hidden_core_rows(load_table(str(db_path), "per_ligand_long", db_mtime_ns))
 
     ligand_sets = sorted(comparison_rows["ligand_set"].dropna().astype(str).unique())
     ligand_set = st.sidebar.selectbox("Ligand set", ligand_sets, index=0 if "core" not in ligand_sets else ligand_sets.index("core"))
@@ -1081,6 +1124,12 @@ def main() -> None:
     )
     extended_db_path = sidebar_extended_db_path(db_path, table_names)
     render_druglike_tables(extended_db_path)
+    render_report_analysis(
+        per_ligand,
+        ligand_set=ligand_set,
+        tier=tier,
+        family=family,
+    )
     render_extended_analysis(extended_db_path)
 
 
