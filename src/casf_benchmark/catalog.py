@@ -30,6 +30,7 @@ class FamilySpec:
     method_prefix: str | None = None
     generator: str = ""
     variant: str = ""
+    hide_on_core: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ def load_families(catalog_path: Path = DEFAULT_CATALOG_PATH) -> list[FamilySpec]
                 ref_root=_path_or_none(raw.get("ref_root")),
                 tiers=tuple(str(value) for value in raw.get("tiers", default_tiers)),
                 variant=str(raw.get("variant") or (family_id.removeprefix("qwen_") if family_id.startswith("qwen_") else "")),
+                hide_on_core=bool(raw.get("hide_on_core", False)),
             )
         )
     ids = [family.id for family in families]
@@ -198,6 +200,40 @@ def describe_run(label: str, descriptors: dict[str, object] | None = None) -> di
         }
     derived.update(descriptors)
     return derived
+
+
+def hidden_on_core_family_ids(catalog_path: Path = DEFAULT_CATALOG_PATH) -> frozenset[str]:
+    """Families the dashboard omits when ligand_set is core.
+
+    Analysis still writes them; this is display-only so the PR #1 Qwen resamples
+    do not sit next to the original core rows.
+    """
+    return frozenset(family.id for family in load_families(catalog_path) if family.hide_on_core)
+
+
+def is_hidden_on_core(
+    family_id: object,
+    ligand_set: object,
+    catalog_path: Path = DEFAULT_CATALOG_PATH,
+) -> bool:
+    return str(ligand_set) == "core" and str(family_id) in hidden_on_core_family_ids(catalog_path)
+
+
+def drop_hidden_core_rows(frame: Any, catalog_path: Path = DEFAULT_CATALOG_PATH) -> Any:
+    """Drop hide_on_core families from core rows. Ref and other sets are unchanged."""
+    if getattr(frame, "empty", True):
+        return frame
+    columns = getattr(frame, "columns", [])
+    if "family" not in columns or "ligand_set" not in columns:
+        return frame
+    hidden = hidden_on_core_family_ids(catalog_path)
+    if not hidden:
+        return frame
+    keep = ~(
+        (frame["ligand_set"].astype(str) == "core")
+        & frame["family"].astype(str).isin(hidden)
+    )
+    return frame.loc[keep].reset_index(drop=True)
 
 
 def family_by_id(family_id: str, catalog_path: Path = DEFAULT_CATALOG_PATH) -> FamilySpec:

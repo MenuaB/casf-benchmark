@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 PANEL_FAMILIES = (
-    "qwen_1p7b_fsq_bigdata_step47023",
+    "qwen_1p7b_fsq_bigdata_pretrain",
     "loqi_raw",
     "nextmol_dmt_l_raw",
     "torsional_diffusion_raw",
@@ -20,7 +20,7 @@ PANEL_FAMILIES = (
 )
 
 PLOT_LABELS = {
-    "qwen_1p7b_fsq_bigdata_step47023": "Qwen 1.7B FSQ",
+    "qwen_1p7b_fsq_bigdata_pretrain": "Qwen 1.7B FSQ",
     "loqi_raw": "LOQI",
     "nextmol_dmt_l_raw": "NExT-Mol DMT-L",
     "torsional_diffusion_raw": "Torsional Diffusion",

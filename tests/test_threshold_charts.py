@@ -69,6 +69,15 @@ def _rows() -> pd.DataFrame:
                 "row_type": "generation",
                 "ligand_set": "core",
                 "tier": "fixed",
+                "family": "qwen_1p7b_fsq_bigdata_pretrain",
+                "display_label": "Qwen 1.7B fsq+bigdata-pretrain",
+                "casf_hit_0p75": 0.9,
+                "mean_clusters_1p0": 70.0,
+            },
+            {
+                "row_type": "generation",
+                "ligand_set": "core",
+                "tier": "fixed",
                 "family": "qwen_0p6b_bigdata_step111000",
                 "display_label": "other qwen",
                 "casf_hit_0p75": 0.1,
@@ -90,8 +99,8 @@ def _rows() -> pd.DataFrame:
 def test_panel_drops_other_families_and_references() -> None:
     charts = load_charts()
     filtered = charts.filter_panel(_rows(), ligand_set="core", tier="All", family="All")
-    assert set(filtered["family"]) == {"loqi_raw", "rdkit_random_raw"}
-    assert set(filtered["plot_label"]) == {"LOQI", "RDKit random (raw)"}
+    assert set(filtered["family"]) == {"loqi_raw", "rdkit_random_raw", "qwen_1p7b_fsq_bigdata_pretrain"}
+    assert set(filtered["plot_label"]) == {"LOQI", "RDKit random (raw)", "Qwen 1.7B FSQ"}
     assert "dynamic" in set(filtered["tier"].astype(str))
 
 
@@ -99,7 +108,7 @@ def test_tier_dropdown_keeps_only_the_selected_tier() -> None:
     charts = load_charts()
     filtered = charts.filter_panel(_rows(), ligand_set="core", tier="fixed", family="All")
     assert set(filtered["tier"].astype(str)) == {"fixed"}
-    assert set(filtered["family"]) == {"loqi_raw", "rdkit_random_raw"}
+    assert set(filtered["family"]) == {"loqi_raw", "rdkit_random_raw", "qwen_1p7b_fsq_bigdata_pretrain"}
 
 
 def test_available_thresholds_skip_missing_columns() -> None:

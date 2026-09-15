@@ -136,6 +136,10 @@ families:
     core_root: /mnt/weka/vtarasov/code/flowr_root/casf_benchmark_runs/flowr_core
     ref_root: /mnt/weka/vtarasov/code/flowr_root/casf_benchmark_runs/flowr_ref
 
+  # Step-named Qwen checkpoints from PR #1. Rows stay in the analysis DB; the
+  # dashboard hides them on core (`hide_on_core`) so they do not duplicate the
+  # original qwen_* families above. Ref and druglike still show them.
+  #
   # Core-only, deliberately: unlike the other ten checkpoints below, the CASF16-ref
   # analysis for this one has never produced tables, so there is no ref result to
   # point at and claiming a ref_root here would show an empty ref view rather than an
@@ -151,65 +155,76 @@ families:
   # and the `casf16_ref` cohort in generation_runs.yaml at that point.
   - id: qwen_0p6b_4e_from_bigdata_step29600
     display_label: "Qwen 0.6B 4e from bigdata (step 29600)"
+    hide_on_core: true
     method_prefix: qwen_0p6b_4e_from_bigdata_step29600
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_4e_from_bigdata_step29600_core
 
   - id: qwen_1p7b_4e_step29600
     display_label: "Qwen 1.7B 4e (step 29600)"
+    hide_on_core: true
     method_prefix: qwen_1p7b_4e_step29600
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_4e_step29600_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_4e_step29600_ref
 
   - id: qwen_1p7b_bigdata_step74000
     display_label: "Qwen 1.7B bigdata (step 74000)"
+    hide_on_core: true
     method_prefix: qwen_1p7b_bigdata_step74000
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_bigdata_step74000_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_bigdata_step74000_ref
 
   - id: qwen_1p7b_4e_from_bigdata_step26400
     display_label: "Qwen 1.7B 4e from bigdata (step 26400)"
+    hide_on_core: true
     method_prefix: qwen_1p7b_4e_from_bigdata_step26400
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_4e_from_bigdata_step26400_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_4e_from_bigdata_step26400_ref
 
   - id: qwen_4b_4e_step20000
     display_label: "Qwen 4B 4e (step 20000)"
+    hide_on_core: true
     method_prefix: qwen_4b_4e_step20000
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_4b_4e_step20000_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_4b_4e_step20000_ref
 
   - id: qwen_0p6b_fsq_6e_from_bigdata_step28320
     display_label: "Qwen 0.6B FSQ 6e from bigdata (step 28320)"
+    hide_on_core: true
     method_prefix: qwen_0p6b_fsq_6e_from_bigdata_step28320
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_fsq_6e_from_bigdata_step28320_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_fsq_6e_from_bigdata_step28320_ref
 
   - id: qwen_1p7b_fsq_6e_from_bigdata_step28320
     display_label: "Qwen 1.7B FSQ 6e from bigdata (step 28320)"
+    hide_on_core: true
     method_prefix: qwen_1p7b_fsq_6e_from_bigdata_step28320
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_fsq_6e_from_bigdata_step28320_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_fsq_6e_from_bigdata_step28320_ref
 
   - id: qwen_4b_bigdata_step110000
     display_label: "Qwen 4B bigdata (step 110000)"
+    hide_on_core: true
     method_prefix: qwen_4b_bigdata_step110000
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_4b_bigdata_step110000_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_4b_bigdata_step110000_ref
 
   - id: qwen_4b_4e_from_bigdata_step20000
     display_label: "Qwen 4B 4e from bigdata (step 20000)"
+    hide_on_core: true
     method_prefix: qwen_4b_4e_from_bigdata_step20000
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_4b_4e_from_bigdata_step20000_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_4b_4e_from_bigdata_step20000_ref
 
   - id: qwen_0p6b_fsq_bigdata_step70534
     display_label: "Qwen 0.6B FSQ bigdata (step 70534)"
+    hide_on_core: true
     method_prefix: qwen_0p6b_fsq_bigdata_step70534
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_fsq_bigdata_step70534_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_fsq_bigdata_step70534_ref
 
   - id: qwen_1p7b_fsq_bigdata_step47023
     display_label: "Qwen 1.7B FSQ bigdata (step 47023)"
+    hide_on_core: true
     method_prefix: qwen_1p7b_fsq_bigdata_step47023
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_fsq_bigdata_step47023_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_fsq_bigdata_step47023_ref

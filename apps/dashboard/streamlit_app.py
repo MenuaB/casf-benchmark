@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from casf_benchmark.catalog import drop_hidden_core_rows
 from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, DEFAULT_EXTENDED_DB as _DEFAULT_EXTENDED_DB
 
 
@@ -756,7 +757,7 @@ def filter_extended_table(
     family: str,
     stratum_type: str,
 ) -> pd.DataFrame:
-    out = frame.copy()
+    out = drop_hidden_core_rows(frame.copy())
     if ligand_set != "All" and "ligand_set" in out.columns:
         out = out[out["ligand_set"].astype(str) == ligand_set]
     if tier != "All" and "tier" in out.columns:
@@ -869,10 +870,12 @@ def render_extended_analysis(extended_db_path: Path) -> None:
         st.info(f"No extended_* tables found in {extended_db_path}")
         return
 
-    first_available = load_table(
-        str(extended_db_path),
-        EXTENDED_TABLES[available[0]]["table"],
-        extended_mtime_ns,
+    first_available = drop_hidden_core_rows(
+        load_table(
+            str(extended_db_path),
+            EXTENDED_TABLES[available[0]]["table"],
+            extended_mtime_ns,
+        )
     )
     ligand_sets = ["All"]
     if "ligand_set" in first_available.columns:
@@ -884,9 +887,12 @@ def render_extended_analysis(extended_db_path: Path) -> None:
     with filter_cols[1]:
         tier = st.selectbox("Extended tier", ["All", *TIERS], key="extended_tier")
     with filter_cols[2]:
+        family_source = first_available
+        if ligand_set != "All" and "ligand_set" in family_source.columns:
+            family_source = family_source[family_source["ligand_set"].astype(str) == ligand_set]
         families = ["All"]
-        if "family" in first_available.columns:
-            families.extend(sorted(first_available["family"].dropna().astype(str).unique()))
+        if "family" in family_source.columns:
+            families.extend(sorted(family_source["family"].dropna().astype(str).unique()))
         family = st.selectbox("Extended family", families, key="extended_family")
     with filter_cols[3]:
         stratum_type = st.selectbox(
@@ -918,13 +924,14 @@ def main() -> None:
 
     db_mtime_ns = db_path.stat().st_mtime_ns
     table_names = load_table_names(str(db_path), db_mtime_ns)
-    comparison_rows = load_table(str(db_path), "comparison_rows", db_mtime_ns)
-    comparison_strata = load_table(str(db_path), "comparison_strata", db_mtime_ns)
+    comparison_rows = drop_hidden_core_rows(load_table(str(db_path), "comparison_rows", db_mtime_ns))
+    comparison_strata = drop_hidden_core_rows(load_table(str(db_path), "comparison_strata", db_mtime_ns))
 
     ligand_sets = sorted(comparison_rows["ligand_set"].dropna().astype(str).unique())
     ligand_set = st.sidebar.selectbox("Ligand set", ligand_sets, index=0 if "core" not in ligand_sets else ligand_sets.index("core"))
     tier = st.sidebar.selectbox("Tier", ["All", *TIERS], index=0)
-    families = ["All", *sorted(comparison_rows["family"].dropna().astype(str).unique())]
+    family_source = comparison_rows[comparison_rows["ligand_set"].astype(str) == ligand_set]
+    families = ["All", *sorted(family_source["family"].dropna().astype(str).unique())]
     family = st.sidebar.selectbox("Family", families)
 
     with st.sidebar.expander("Break down aggregates", expanded=False):

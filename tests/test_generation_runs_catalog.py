@@ -192,3 +192,39 @@ def test_per_checkpoint_families_claim_only_ligand_sets_that_have_results() -> N
             if expected not in run_ids:
                 mismatches.append(f"{family.id} claims {ligand_set}_root but {expected} is not a source")
     assert not mismatches, "catalog claims results that do not exist:\n" + "\n".join(mismatches)
+
+
+def test_pr1_qwen_families_are_hidden_on_core_only() -> None:
+    import pandas as pd
+
+    from casf_benchmark.catalog import (
+        drop_hidden_core_rows,
+        hidden_on_core_family_ids,
+        is_hidden_on_core,
+        load_families,
+    )
+
+    hidden = hidden_on_core_family_ids()
+    step_named = {family.id for family in load_families() if "_step" in family.id}
+    assert hidden == step_named
+    assert "qwen_0p6b_fsq_bigdata_pretrain" not in hidden
+    assert "qwen_0p6b_fsq_bigdata_step70534" in hidden
+    assert is_hidden_on_core("qwen_0p6b_fsq_bigdata_step70534", "core")
+    assert not is_hidden_on_core("qwen_0p6b_fsq_bigdata_step70534", "ref")
+    assert not is_hidden_on_core("qwen_0p6b_fsq_bigdata_pretrain", "core")
+
+    frame = pd.DataFrame(
+        [
+            {"ligand_set": "core", "family": "qwen_0p6b_fsq_bigdata_step70534"},
+            {"ligand_set": "core", "family": "qwen_0p6b_fsq_bigdata_pretrain"},
+            {"ligand_set": "ref", "family": "qwen_0p6b_fsq_bigdata_step70534"},
+            {"ligand_set": "core", "family": "loqi_raw"},
+        ]
+    )
+    out = drop_hidden_core_rows(frame)
+    kept = set(zip(out["ligand_set"], out["family"]))
+    assert kept == {
+        ("core", "qwen_0p6b_fsq_bigdata_pretrain"),
+        ("ref", "qwen_0p6b_fsq_bigdata_step70534"),
+        ("core", "loqi_raw"),
+    }
