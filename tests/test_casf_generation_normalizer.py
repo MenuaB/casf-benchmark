@@ -52,7 +52,7 @@ def test_materialize_source_pool_samples_from_full_pool_before_pb(monkeypatch, t
     )
 
     monkeypatch.setattr(normalizer, "load_multi_record_sdf", lambda _path: multi_conf_ethane(10))
-    monkeypatch.setattr(normalizer, "load_torsion_ref", lambda *_args: (multi_conf_ethane(1), "fake"))
+    monkeypatch.setattr(normalizer, "load_torsion_ref", lambda *_args, **_kwargs: (multi_conf_ethane(1), "fake"))
 
     def fake_finalize_pipeline_pair(**kwargs):
         captured.update(kwargs)

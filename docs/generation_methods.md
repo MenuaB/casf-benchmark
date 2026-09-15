@@ -14,14 +14,14 @@ Conformer generation for the CASF–ChEMBL3D intersection panel: in-repo RDKit/t
 | CASF MOL2 | `.../core_chembl3d_exact_intersection_ligands/` (or ref) |
 | ChEMBL3D topologies | `.../chembl3d/topologies/{group}.sdf` |
 
-Required CSV columns: `ligand_id`, `source_file`, `chembl3d_group`, `chembl3d_mol_id`, `conformer_count`. SMILES: `chembl3d_isomeric_smiles` if present, else `casf_heavy_isomeric_smiles`.
+Required CSV columns: `ligand_id`, `source_file`, `chembl3d_group`, `chembl3d_mol_id`, `conformer_count`. SMILES: `chembl3d_isomeric_smiles` if present, else `casf_heavy_isomeric_smiles`. After rematch, also `chembl3d_sdf_record_index` (pinned SDF record for the bound stereoisomer). `(group, mol_id)` is not unique — Flipper isomers share a parent id.
 
-CASF MOL2 path: `{ligand_dir}/{source_file}`. Used as PB reference and fallback when topology load fails.
+CASF MOL2 path: `{ligand_dir}/{source_file}`. Used as PB reference fallback only when topology load fails **and** the crystal 3D stereo matches the mapping SMILES. This benchmark recovers the bound stereoisomer; generators are not prompted for Flipper siblings, and analysis does not take best RMSD across isomers.
 
 ## Per-ligand workflow
 
 1. **Mapping validation** — empty `chembl3d_group`/`chembl3d_mol_id` → all 12 methods get `missing_chembl3d_mapping`.
-2. **Reference load** — `load_torsion_ref` (ChEMBL3D topology first, CASF MOL2 fallback). Failure → `chembl3d_ref_load_failed`.
+2. **Reference load** — `load_torsion_ref` with `expected_smiles` (and `sdf_record_index` when present). ChEMBL3D topology first; CASF MOL2 fallback only if stereo matches. Failure → `chembl3d_ref_load_failed`. First-id topology load is a bug and is not used.
 3. **Embedding template** — copy reference, strip conformers → `base_mol` (RDKit embed template). Rotatable bonds: `Descriptors.NumRotatableBonds`.
 4. **Tier targets:**
    - **fixed** = `--fixed_set_size` (default 1000)
@@ -180,10 +180,12 @@ After inference → [materialization.md](materialization.md) → [analyzer.md](a
 
 ## Design rationale
 
-- ChEMBL3D topology (conformers stripped) as `base_mol` aligns RDKit embedding with the ChEMBL3D graph.
+- ChEMBL3D topology of the **requested stereoisomer** (conformers stripped) as `base_mol` aligns RDKit embedding with the ChEMBL3D graph.
 - Single PB pass on fixed pool; subset tiers inherit labels.
 - Seeded subsampling keyed by ligand + method for reproducibility.
 - Manifest-part architecture enables parallel Slurm with idempotent restart.
+
+Learned-model rematerialization must re-run PoseBusters against isomer A. Re-analyzing current post-PB generation files is not a stereo-identity fix (analysis copies `pb_*` from the manifest). See [stereo_identity_rerun.md](stereo_identity_rerun.md).
 
 ## Dependencies
 

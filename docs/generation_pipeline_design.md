@@ -24,17 +24,21 @@ generation.
    matches only on `casf_heavy_isomeric_smiles == chembl3d_isomeric_smiles`.
 5. Duplicate ChEMBL3D rows are deduplicated by `(isomeric_smiles, group, mol_id)`,
    keeping the row with the largest `conformer_count`.
-6. A hit is eligible only if the ChEMBL3D topology SDF entry exists in
+6. A hit is eligible only if a ChEMBL3D topology SDF **stereoisomer** whose 3D identity matches the index SMILES exists in
    `topologies/{group}.sdf` and the prepared ChEMBL3D reference has at least one
-   rotatable torsion.
+   rotatable torsion. The matcher keeps every SDF record for a `mol_id`; taking the
+   first record is a bug (Flipper siblings share a parent id).
 7. Output rows contain CASF SMILES variants, selected `chembl3d_group`,
-   `chembl3d_mol_id`, `chembl3d_isomeric_smiles`, and ChEMBL3D `conformer_count`.
+   `chembl3d_mol_id`, `chembl3d_isomeric_smiles`, `chembl3d_sdf_record_index`,
+   `chembl3d_inchi_stereo`, filtered `conformer_count`, and
+   `chembl3d_index_conformer_count`.
 
 ## Generation Inputs
 
-Each CSV row maps one CASF ligand to one ChEMBL3D topology molecule. Generation
-loads that ChEMBL3D topology molecule as the reference/torsion seed. RDKit random
-pipelines use the same topology with all conformers removed as `base_mol`.
+Each CSV row maps one CASF ligand to one ChEMBL3D **stereoisomer** (SMILES + SDF
+record index, not merely `(group, mol_id)`). Generation loads that topology
+molecule as the reference/torsion seed. RDKit random pipelines use the same
+topology with all conformers removed as `base_mol`.
 
 | Setting | Value |
 |---|---:|

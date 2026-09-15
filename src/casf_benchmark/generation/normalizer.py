@@ -221,6 +221,8 @@ def materialize_source_pool(
         input_mol.chembl3d_mol_id,
         topology_root,
         Path(input_mol.source_input),
+        expected_smiles=input_mol.smiles,
+        sdf_record_index=input_mol.chembl3d_sdf_record_index,
     )
     if reference_mol is None:
         return [

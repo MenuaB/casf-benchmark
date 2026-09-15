@@ -31,6 +31,7 @@ SUBMODULES = (
     "casf_benchmark.analysis.dataset",
     "casf_benchmark.analysis.metrics",
     "casf_benchmark.catalog",
+    "casf_benchmark.chembl3d.identity",
     "casf_benchmark.chembl3d.loader",
     "casf_benchmark.cli.analyze_conformer_sets",
     "casf_benchmark.cli.build_dashboard_db",

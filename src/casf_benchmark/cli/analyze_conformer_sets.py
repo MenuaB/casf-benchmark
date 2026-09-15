@@ -35,8 +35,8 @@ from casf_benchmark.analysis.metrics import (
     safe_sum,
     threshold_tag,
 )
+from casf_benchmark.chembl3d.identity import expected_identity_from_mapping, stereo_cache_token
 from casf_benchmark.chembl3d.loader import (
-    find_mol_id_indices,
     load_chembl3d_conformers,
     load_topology_mol,
 )
@@ -419,7 +419,15 @@ def get_chembl_mols(
 ) -> list[Chem.Mol]:
     group = str(chembl_row["chembl3d_group"]).zfill(3)
     chembl_mol_id = str(chembl_row["chembl3d_mol_id"])
-    return load_chembl3d_conformers(group, chembl_mol_id, topology_root, zarr_root)
+    expected_smiles, sdf_record_index = expected_identity_from_mapping(chembl_row)
+    return load_chembl3d_conformers(
+        group,
+        chembl_mol_id,
+        topology_root,
+        zarr_root,
+        expected_smiles=expected_smiles,
+        sdf_record_index=sdf_record_index,
+    )
 
 
 def _reference_chembl_sample_seed(mol_id: str) -> int:
@@ -434,31 +442,23 @@ def get_reference_chembl_mols(
     topology_root: Path,
     zarr_root: Path,
 ) -> tuple[list[Chem.Mol], int | None]:
-    """Load ChEMBL3D conformers for reference analysis, subsampling heavy ligands."""
+    """Load ChEMBL3D conformers for reference analysis, subsampling heavy ligands.
+
+    Stereoisomer filtering happens before the ``1tlp`` cap. Sampling mixed Flipper
+    isomers first can drop almost all of the requested stereoisomer.
+    """
     group = str(chembl_row["chembl3d_group"]).zfill(3)
     chembl_mol_id = str(chembl_row["chembl3d_mol_id"])
-    cap = REFERENCE_CHEMBL3D_SAMPLE_CAPS.get(mol_id)
-    if cap is None:
-        return load_chembl3d_conformers(group, chembl_mol_id, topology_root, zarr_root), None
-
-    import zarr
-
-    group_path = zarr_root / f"{int(group):03d}"
-    mol_id_array = zarr.open_array(str(group_path / "mol_id"), mode="r")
-    all_indices = find_mol_id_indices(mol_id_array, chembl_mol_id)
-    if len(all_indices) <= cap:
-        return load_chembl3d_conformers(group, chembl_mol_id, topology_root, zarr_root), None
-
-    rng = random.Random(_reference_chembl_sample_seed(mol_id))
-    sampled_indices = sorted(rng.sample(all_indices, cap))
+    expected_smiles, sdf_record_index = expected_identity_from_mapping(chembl_row)
     mols = load_chembl3d_conformers(
         group,
         chembl_mol_id,
         topology_root,
         zarr_root,
-        row_indices=sampled_indices,
+        expected_smiles=expected_smiles,
+        sdf_record_index=sdf_record_index,
     )
-    return mols, len(all_indices)
+    return sample_reference_chembl_mols(mols, mol_id)
 
 
 def sample_reference_chembl_mols(
@@ -821,7 +821,14 @@ def analyze_reference_ligand(task: LigandAnalysisTask) -> dict[str, list[dict[st
     if task.chembl_row is not None:
         group = str(task.chembl_row["chembl3d_group"]).zfill(3)
         chembl_mol_id = str(task.chembl_row["chembl3d_mol_id"])
-        chembl_sdf_mol = load_topology_mol(group, chembl_mol_id, Path(task.topology_root))
+        expected_smiles, sdf_record_index = expected_identity_from_mapping(task.chembl_row)
+        chembl_sdf_mol = load_topology_mol(
+            group,
+            chembl_mol_id,
+            Path(task.topology_root),
+            expected_smiles=expected_smiles,
+            sdf_record_index=sdf_record_index,
+        )
         chembl_mols, chembl_loaded_count = get_reference_chembl_mols(
             pd.Series(task.chembl_row),
             task.mol_id,
@@ -941,6 +948,10 @@ def _process_ligand_task(task: LigandAnalysisTask) -> tuple[str, str | None]:
     _limit_worker_threads()
     try:
         payload = analyze_ligand(task)
+        payload["stereo_identity_token"] = stereo_cache_token(task.chembl_row)
+        if task.chembl_row is not None:
+            _expected_smiles, sdf_record_index = expected_identity_from_mapping(task.chembl_row)
+            payload["chembl3d_sdf_record_index"] = sdf_record_index
         _write_pickle_atomic(Path(task.parts_dir) / f"{task.mol_id}.pkl", payload)
         return task.mol_id, None
     except Exception as exc:  # noqa: BLE001 - propagate worker context
@@ -1051,6 +1062,7 @@ def _part_has_expected_sources(
     part_path: Path,
     expected_sources: Sequence[str],
     require_chembl: bool,
+    stereo_identity_token: str = "",
 ) -> bool:
     if not part_path.exists():
         return False
@@ -1064,18 +1076,28 @@ def _part_has_expected_sources(
     observed = {str(row.get("source", "")) for row in rows}
     if not set(expected_sources).issubset(observed):
         return False
-    if not require_chembl:
-        return True
-    for row in rows:
-        if str(row.get("source", "")) != "chembl3d_gt":
-            continue
-        status = str(row.get("chembl_load_status", ""))
-        try:
-            conformer_count = float(row.get("conformer_count", 0))
-        except (TypeError, ValueError):
-            conformer_count = 0.0
-        return status == "ok" and conformer_count > 0
-    return False
+    if require_chembl:
+        chembl_ok = False
+        for row in rows:
+            if str(row.get("source", "")) != "chembl3d_gt":
+                continue
+            status = str(row.get("chembl_load_status", ""))
+            try:
+                conformer_count = float(row.get("conformer_count", 0))
+            except (TypeError, ValueError):
+                conformer_count = 0.0
+            chembl_ok = status == "ok" and conformer_count > 0
+            break
+        if not chembl_ok:
+            return False
+        stored_token = str(payload.get("stereo_identity_token", "")) if isinstance(payload, dict) else ""
+        if not stereo_identity_token or stored_token != stereo_identity_token:
+            return False
+    elif stereo_identity_token:
+        stored_token = str(payload.get("stereo_identity_token", "")) if isinstance(payload, dict) else ""
+        if stored_token != stereo_identity_token:
+            return False
+    return True
 
 
 def load_or_compute_ligand_metrics(
@@ -1111,6 +1133,20 @@ def load_or_compute_ligand_metrics(
         if not chembl_map.empty and "ligand_id" in chembl_map.columns
         else set()
     )
+    chembl_lookup = (
+        chembl_map.drop_duplicates("ligand_id").set_index("ligand_id")
+        if not chembl_map.empty and "ligand_id" in chembl_map.columns
+        else None
+    )
+
+    def _token_for(mol_id: str) -> str:
+        if chembl_lookup is None or mol_id not in chembl_lookup.index:
+            return ""
+        try:
+            return stereo_cache_token(chembl_lookup.loc[mol_id].to_dict())
+        except ValueError:
+            return ""
+
     if report_only:
         pending = []
     elif resume_parts:
@@ -1121,6 +1157,7 @@ def load_or_compute_ligand_metrics(
                 parts_dir / f"{mol_id}.pkl",
                 expected_sources,
                 require_chembl=mode == "reference" and str(mol_id) in mapped_ids,
+                stereo_identity_token=_token_for(str(mol_id)),
             )
         ]
     else:
