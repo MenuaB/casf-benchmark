@@ -50,6 +50,7 @@ release_data = _load_repo_release_data()
 
 render_table_help = _load_sibling_module("table_help").render_table_help
 render_druglike_k_charts = _load_sibling_module("druglike_k_charts").render_druglike_k_charts
+render_threshold_charts = _load_sibling_module("threshold_charts").render_threshold_charts
 
 _DEFAULT_DB = DEFAULT_DASHBOARD_DB
 DEFAULT_DB = Path(os.environ.get("CASF_DASHBOARD_DB", str(_DEFAULT_DB)))
@@ -1033,6 +1034,12 @@ def main() -> None:
         table_columns,
         table_name,
         height=COMPARISON_TABLE_HEIGHT_PX,
+    )
+    render_threshold_charts(
+        comparison_rows,
+        ligand_set=ligand_set,
+        tier=tier,
+        family=family,
     )
     extended_db_path = sidebar_extended_db_path(db_path, table_names)
     render_druglike_tables(extended_db_path)
