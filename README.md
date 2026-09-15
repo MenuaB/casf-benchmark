@@ -30,6 +30,7 @@ Installs the package editable via `pip install -e ".[dev]"` (see `environment-an
 | --- | --- |
 | [docs/data_preparation.md](docs/data_preparation.md) | CASF–ChEMBL3D intersection mapping |
 | [docs/casf16_chembl3d_data_loader_method.md](docs/casf16_chembl3d_data_loader_method.md) | ChEMBL3D topology/zarr loader (detailed) |
+| [docs/stereo_identity_rerun.md](docs/stereo_identity_rerun.md) | Rematch / regen playbook for Flipper identity join |
 | [docs/generation_methods.md](docs/generation_methods.md) | RDKit/torsion + external model output contract |
 | [docs/generator_models_catalog.md](docs/generator_models_catalog.md) | Per-model papers, training data, benchmarks |
 | [docs/analyzer.md](docs/analyzer.md) | Geometric analysis pipeline |

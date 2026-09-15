@@ -517,13 +517,9 @@ def _compute_chembl_pb_rmsds(payload: dict[str, object]) -> list[float]:
 
 def _compute_chembl_pb_conformer_data(payload: dict[str, object]) -> tuple[pd.DataFrame, list[object]]:
     from casf_benchmark.cli.analyze_conformer_sets import (
-        REFERENCE_CHEMBL3D_SAMPLE_CAPS,
-        _reference_chembl_sample_seed,
-        find_mol_id_indices,
         forcefield_energy,
         get_reference_chembl_mols,
         load_casf_ligand,
-        load_chembl3d_conformers,
         posebusters_result,
     )
     from casf_benchmark.paths import DEFAULT_CHEMBL_DATASET_ROOT
@@ -559,36 +555,21 @@ def _compute_chembl_pb_conformer_data(payload: dict[str, object]) -> tuple[pd.Da
         return positions if len(positions) == len(target_energies) else []
 
     def _load_matched_energy_table_mols() -> tuple[pd.DataFrame, list[object]]:
-        group = str(chembl_row["chembl3d_group"]).zfill(3)
-        chembl_mol_id = str(chembl_row["chembl3d_mol_id"])
-        topology_root = DEFAULT_CHEMBL_DATASET_ROOT / "topologies"
-        zarr_root = DEFAULT_CHEMBL_DATASET_ROOT / "zarr_database"
+        mols, _loaded_count = get_reference_chembl_mols(
+            chembl_row,
+            mol_id,
+            DEFAULT_CHEMBL_DATASET_ROOT / "topologies",
+            DEFAULT_CHEMBL_DATASET_ROOT / "zarr_database",
+        )
+        if not mols or len(mols) != len(all_energies):
+            return pd.DataFrame(), []
         for ndigits in (8, 7, 6, 5):
             matched_positions = _match_positions_from_energy_table(ndigits)
             if not matched_positions:
                 continue
-            import random
-            import zarr
-
-            group_path = zarr_root / f"{int(group):03d}"
-            mol_id_array = zarr.open_array(str(group_path / "mol_id"), mode="r")
-            all_indices = find_mol_id_indices(mol_id_array, chembl_mol_id)
-            cap = REFERENCE_CHEMBL3D_SAMPLE_CAPS.get(mol_id)
-            if cap is not None and len(all_indices) > cap:
-                rng = random.Random(_reference_chembl_sample_seed(mol_id))
-                source_indices = sorted(rng.sample(all_indices, cap))
-            else:
-                source_indices = all_indices
-            if len(source_indices) != len(all_energies):
+            if any(position >= len(mols) for position in matched_positions):
                 continue
-            row_indices = [source_indices[position] for position in matched_positions]
-            matched_mols = load_chembl3d_conformers(
-                group,
-                chembl_mol_id,
-                topology_root,
-                zarr_root,
-                row_indices=row_indices,
-            )
+            matched_mols = [mols[position] for position in matched_positions]
             records = _conformer_records_to_reference(matched_mols, casf_bound, matched_positions)
             records["energy"] = [all_energies[position] for position in matched_positions]
             return records, matched_mols

@@ -1,15 +1,41 @@
+from casf_benchmark.chembl3d.identity import (
+    AmbiguousStereoIdentityError,
+    StereoIdentity,
+    StereoIdentityError,
+    StereoIdentityMismatchError,
+    expected_identity_from_mapping,
+    identities_match,
+    mol_matches_expected_smiles,
+    stereo_cache_token,
+    stereo_identity_from_mol,
+    stereo_identity_from_smiles,
+)
 from casf_benchmark.chembl3d.loader import (
+    count_matching_chembl3d_conformers,
     decode_mol_id,
     find_mol_id_indices,
     load_chembl3d_conformers,
+    load_topology_mol,
     load_torsion_ref,
     require_dependencies,
 )
 
 __all__ = [
+    "AmbiguousStereoIdentityError",
+    "StereoIdentity",
+    "StereoIdentityError",
+    "StereoIdentityMismatchError",
+    "count_matching_chembl3d_conformers",
     "decode_mol_id",
+    "expected_identity_from_mapping",
     "find_mol_id_indices",
+    "identities_match",
     "load_chembl3d_conformers",
+    "load_topology_mol",
     "load_torsion_ref",
+    "mol_matches_expected_smiles",
     "require_dependencies",
+    "stereo_cache_token",
+    "stereo_identity_from_mol",
+    "stereo_identity_from_smiles",
 ]

@@ -22,6 +22,7 @@ from pathlib import Path
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdDistGeom, rdMolTransforms
 
+from casf_benchmark.chembl3d.identity import parse_optional_int
 from casf_benchmark.chembl3d.loader import load_torsion_ref
 from casf_benchmark.paths import (
     DEFAULT_CASF16_DATA,
@@ -215,6 +216,7 @@ class InputMolecule:
     chembl3d_group: str = ""
     chembl3d_mol_id: str = ""
     chembl3d_conformer_count: int = 0
+    chembl3d_sdf_record_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -2048,6 +2050,7 @@ def load_intersection_molecules(
                     chembl3d_conformer_count=(
                         int(raw_conformer_count) if raw_conformer_count.isdigit() else 0
                     ),
+                    chembl3d_sdf_record_index=parse_optional_int(row.get("chembl3d_sdf_record_index")),
                 )
             )
 
@@ -2067,7 +2070,7 @@ def process_molecule(
     output_dir = Path(args.output_dir)
     paths = {method: output_dir / method / f"{input_mol.mol_id}.sdf" for method in ALL_METHODS}
 
-    if not input_mol.chembl3d_group or not input_mol.chembl3d_mol_id:
+    if not input_mol.chembl3d_group or not input_mol.chembl3d_mol_id or not input_mol.smiles:
         return [
             empty_result(input_mol, method, "missing_chembl3d_mapping", paths[method])
             for method in ALL_METHODS
@@ -2078,6 +2081,8 @@ def process_molecule(
         input_mol.chembl3d_mol_id,
         Path(args.chembl3d_topology_root),
         Path(input_mol.source_input),
+        expected_smiles=input_mol.smiles,
+        sdf_record_index=input_mol.chembl3d_sdf_record_index,
     )
     if torsion_ref is None:
         return [

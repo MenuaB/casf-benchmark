@@ -765,12 +765,16 @@ def test_chembl_loader_roundtrip_with_fake_zarr(tmp_path):
             coords.append([float(idx + row), 0.0, 0.0])
         coord_arr[row] = np.asarray(coords, dtype="f4")
 
-    loaded = load_chembl3d_conformers(group, mol_id, topology_dir, zarr_root)
+    loaded = load_chembl3d_conformers(
+        group, mol_id, topology_dir, zarr_root, expected_smiles="CC"
+    )
     assert len(loaded) == 2
     assert loaded[0].GetNumConformers() == 1
     assert loaded[1].GetConformer(0).GetAtomPosition(0).x == pytest.approx(2.0)
 
-    partial = load_chembl3d_conformers(group, mol_id, topology_dir, zarr_root, row_indices=[0])
+    partial = load_chembl3d_conformers(
+        group, mol_id, topology_dir, zarr_root, expected_smiles="CC", row_indices=[0]
+    )
     assert len(partial) == 1
     assert partial[0].GetConformer(0).GetAtomPosition(0).x == pytest.approx(0.0)
 
@@ -778,7 +782,9 @@ def test_chembl_loader_roundtrip_with_fake_zarr(tmp_path):
     bad_numbers[0] = 999
     numbers_arr[2] = bad_numbers
     with pytest.raises(ValueError, match="Atomic numbers row"):
-        load_chembl3d_conformers(group, mol_id, topology_dir, zarr_root)
+        load_chembl3d_conformers(
+            group, mol_id, topology_dir, zarr_root, expected_smiles="CC"
+        )
 
 
 def test_dynamic_generation_methods_from_manifest(tmp_path):
