@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import yaml
 
-from casf_benchmark.catalog import drop_hidden_core_rows
 from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, DEFAULT_EXTENDED_DB as _DEFAULT_EXTENDED_DB
 
 
@@ -565,6 +565,37 @@ def ensure_db_available(path: Path) -> None:
     finally:
         bar.empty()
         status.empty()
+
+
+def _families_config_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "src" / "casf_benchmark" / "config" / "casf_generation_families.yaml"
+
+
+def hidden_on_core_family_ids() -> frozenset[str]:
+    """Read hide_on_core flags from this checkout, not a stale Cloud wheel."""
+    path = _families_config_path()
+    if not path.is_file():
+        return frozenset()
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return frozenset(
+        str(entry["id"])
+        for entry in data.get("families", [])
+        if isinstance(entry, dict) and entry.get("hide_on_core")
+    )
+
+
+def drop_hidden_core_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Omit hide_on_core families for core rows; sqlite/ref/druglike stay intact."""
+    if frame.empty or "family" not in frame.columns or "ligand_set" not in frame.columns:
+        return frame
+    hidden = hidden_on_core_family_ids()
+    if not hidden:
+        return frame
+    keep = ~(
+        (frame["ligand_set"].astype(str) == "core")
+        & frame["family"].astype(str).isin(hidden)
+    )
+    return frame.loc[keep].reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
