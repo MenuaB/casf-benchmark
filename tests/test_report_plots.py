@@ -99,3 +99,26 @@ def test_duplicate_ligand_method_rows_require_tier_selection(
     )
     with pytest.raises(ValueError, match="Select a tier"):
         generate_report_plots(frame, tmp_path)
+
+
+def test_original_report_family_csv_shape_is_supported(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        {
+            "family": ["torsion_raw", "casf_crystal"] * 3,
+            "mol_id": ["a", "a", "b", "b", "c", "c"],
+            "energy_median": [10.0, 12.0, 20.0, 21.0, 30.0, 28.0],
+            "energy_std": [2.0, 0.0, 3.0, 0.0, 1.0, 0.0],
+        }
+    )
+    outputs = generate_report_plots(frame, tmp_path)
+    assert set(outputs) == {
+        "energy_small_multiples",
+        "energy_delta_boxplot",
+        "energy_vs_reference",
+    }
+
+
+def test_reference_domains_match_original_html_figures() -> None:
+    config = ReportPlotConfig()
+    assert config.energy_ylim == (-200.0, 420.0)
+    assert config.rmsd_ylim == (0.0, 2.6)

@@ -32,7 +32,7 @@ import pandas as pd
 
 ALIASES: dict[str, tuple[str, ...]] = {
     "ligand_id": ("ligand_id", "mol_id"),
-    "method": ("display_label", "method"),
+    "method": ("display_label", "method", "family"),
     "best_rmsd": ("best_rmsd", "casf_best_rmsd"),
     "typical_rmsd": ("typical_rmsd", "casf_median_rmsd"),
     "energy_median": ("energy_median",),
@@ -40,6 +40,21 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "tier": ("tier",),
     "category": ("category",),
 }
+
+FAMILY_LABELS = {
+    "torsion_raw": "Torsion (raw)",
+    "torsional_diffusion_raw": "Torsional Diffusion",
+    "rdkit_random_raw": "RDKit (raw)",
+    "mcf_drugs_l_raw": "MCF drugs-L",
+    "nextmol_dmt_l_raw": "NExT-Mol DMT-L",
+    "rdkit_random_minimized": "RDKit (minimized)",
+    "torsion_minimized": "Torsion (minimized)",
+    "loqi_raw": "LOQI",
+    "chembl3d_gt": "ChEMBL3D ground truth",
+    "qwen_1p7b_fsq_bigdata_pretrain": "Qwen 1.7B fsq+bigdata-pretrain",
+    "casf_crystal": "CASF crystal",
+}
+REFERENCE_METHOD_ORDER = tuple(FAMILY_LABELS.values())
 
 PALETTE = {
     "ours": "#4A3AA7",
@@ -62,8 +77,8 @@ class ReportPlotConfig:
     tier: str | None = None
     methods: tuple[str, ...] | None = None
     category_by_method: Mapping[str, str] | None = None
-    energy_ylim: tuple[float, float] | None = None
-    rmsd_ylim: tuple[float, float] | None = None
+    energy_ylim: tuple[float, float] | None = (-200.0, 420.0)
+    rmsd_ylim: tuple[float, float] | None = (0.0, 2.6)
     rmsd_thresholds: tuple[float, ...] = (0.25, 0.5, 0.75)
     seed: int = 0
 
@@ -108,7 +123,7 @@ def _canonicalize(frame: pd.DataFrame) -> pd.DataFrame:
         )
 
     out["ligand_id"] = out["ligand_id"].astype(str)
-    out["method"] = out["method"].astype(str)
+    out["method"] = out["method"].astype(str).replace(FAMILY_LABELS)
     for name in ("best_rmsd", "typical_rmsd", "energy_median", "energy_std"):
         if name in out.columns:
             out[name] = pd.to_numeric(out[name], errors="coerce")
@@ -184,6 +199,26 @@ def _available_methods(
     return [method for method in methods if method not in excluded]
 
 
+def _report_method_order(
+    methods: Sequence[str],
+    *,
+    reference_last: bool = False,
+) -> list[str]:
+    """Preserve the source report order and append newly available methods."""
+
+    unique = list(dict.fromkeys(str(method) for method in methods))
+    preferred = [method for method in REFERENCE_METHOD_ORDER if method in unique]
+    remaining = sorted(
+        (method for method in unique if method not in set(preferred)),
+        key=lambda method: (0 if "qwen" in method.lower() else 1, method.casefold()),
+    )
+    ordered = [*preferred, *remaining]
+    if reference_last and "CASF crystal" in ordered:
+        ordered.remove("CASF crystal")
+        ordered.append("CASF crystal")
+    return ordered
+
+
 def _panel_grid(count: int, max_columns: int) -> tuple[int, int]:
     columns = min(max_columns, max(1, count))
     return max(1, math.ceil(count / columns)), columns
@@ -237,7 +272,10 @@ def plot_energy_small_multiples(
 ) -> Path:
     """Plot each method's per-ligand median energy with deviation bars."""
 
-    methods = _available_methods(frame, "energy_median")
+    methods = _report_method_order(
+        _available_methods(frame, "energy_median"),
+        reference_last=True,
+    )
     rows, columns = _panel_grid(len(methods), 4)
     fig, axes = plt.subplots(
         rows,
@@ -256,7 +294,12 @@ def plot_energy_small_multiples(
             if "energy_std" in group
             else None
         )
-        color = _method_color(method, frame, config)
+        if method == config.reference_method:
+            color = "#C8552E"
+        elif _category(method, frame, config) == "ours":
+            color = "#8A3B1E"
+        else:
+            color = "#2A6F97"
         ax.errorbar(
             np.arange(len(group)),
             group["energy_median"],
@@ -266,11 +309,11 @@ def plot_energy_small_multiples(
             ecolor=color,
             markersize=2.8,
             elinewidth=0.65,
-            capsize=1.2,
+            capsize=0,
             alpha=0.82,
         )
         ax.set_title(method, fontsize=10, color=PALETTE["text"])
-        ax.set_xlabel("Ligands, sorted within method", fontsize=8)
+        ax.set_xlabel(f"n={len(group)}", fontsize=8)
         ax.tick_params(axis="x", labelbottom=False, length=0)
         ax.grid(axis="y", color=PALETTE["grid"], linewidth=0.7)
         ax.spines[["top", "right"]].set_visible(False)
@@ -309,30 +352,40 @@ def plot_energy_delta_boxplot(
         raise ValueError(
             f"No energy rows overlap the reference method {config.reference_method!r}."
         )
-    ordered = sorted(deltas, key=lambda method: float(deltas[method].median()))
+    ordered = sorted(
+        deltas,
+        key=lambda method: (abs(float(deltas[method].median())), method.casefold()),
+    )
 
     fig, ax = plt.subplots(figsize=(12, 5.5))
     bp = ax.boxplot(
         [deltas[method] for method in ordered],
         tick_labels=ordered,
         patch_artist=True,
-        showfliers=False,
+        showfliers=True,
         widths=0.56,
-        medianprops={"color": "white", "linewidth": 1.5},
+        flierprops={
+            "marker": "o",
+            "markersize": 3,
+            "alpha": 0.4,
+            "markeredgewidth": 0,
+            "color": "#888888",
+        },
+        medianprops={"color": "#8A3B1E", "linewidth": 1.8},
+        boxprops={"facecolor": "#DCEAF3", "edgecolor": "#2A6F97"},
+        whiskerprops={"color": "#2A6F97"},
+        capprops={"color": "#2A6F97"},
     )
-    for box, method in zip(bp["boxes"], ordered):
-        box.set_facecolor(_method_color(method, frame, config))
-        box.set_alpha(0.78)
 
     rng = np.random.default_rng(config.seed)
     for position, method in enumerate(ordered, start=1):
         values = deltas[method].to_numpy()
         ax.scatter(
-            position + rng.normal(0, 0.055, size=len(values)),
+            position + rng.uniform(-0.12, 0.12, size=len(values)),
             values,
             s=10,
-            color=PALETTE["text"],
-            alpha=0.28,
+            color="#2A6F97",
+            alpha=0.35,
             linewidths=0,
             zorder=3,
         )
@@ -355,8 +408,10 @@ def plot_energy_vs_reference(
 ) -> Path:
     """Pair each method and reference energy at a shared ligand position."""
 
-    methods = _available_methods(
-        frame, "energy_median", exclude={config.reference_method}
+    methods = _report_method_order(
+        _available_methods(
+            frame, "energy_median", exclude={config.reference_method}
+        )
     )
     rows, columns = _panel_grid(len(methods), 5)
     fig, axes = plt.subplots(
@@ -471,7 +526,7 @@ def plot_all_method_rmsd(
 ) -> Path:
     """Overlay every method's per-ligand best RMSD on a shared order."""
 
-    methods = _available_methods(frame, "best_rmsd")
+    methods = _report_method_order(_available_methods(frame, "best_rmsd"))
     ligand_order = _rmsd_ligand_order(frame, config)
     order = {ligand_id: index for index, ligand_id in enumerate(ligand_order)}
     categorical = plt.get_cmap("tab10")
@@ -521,13 +576,7 @@ def plot_all_method_rmsd(
         ax.set_ylim(*config.rmsd_ylim)
     ax.grid(axis="y", color=PALETTE["grid"], linewidth=0.7)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.15),
-        ncols=min(5, len(methods)),
-        frameon=False,
-        fontsize=8,
-    )
+    ax.legend(loc="upper left", ncols=2, frameon=False, fontsize=8)
     fig.tight_layout()
     return _finish(fig, path, 175)
 
@@ -539,7 +588,7 @@ def plot_rmsd_small_multiples(
 ) -> Path:
     """Show best and typical RMSD, joined per ligand, in method panels."""
 
-    methods = _available_methods(frame, "best_rmsd")
+    methods = _report_method_order(_available_methods(frame, "best_rmsd"))
     rows, columns = _panel_grid(len(methods), 5)
     fig, axes = plt.subplots(
         rows,
@@ -548,7 +597,7 @@ def plot_rmsd_small_multiples(
         sharey=True,
         squeeze=False,
     )
-    for ax, method in zip(axes.flat, methods):
+    for panel_index, (ax, method) in enumerate(zip(axes.flat, methods)):
         columns_present = ["ligand_id", "best_rmsd"]
         if "typical_rmsd" in frame.columns:
             columns_present.append("typical_rmsd")
@@ -570,7 +619,12 @@ def plot_rmsd_small_multiples(
             alpha=0.7,
         )
         ax.scatter(
-            x, group["best_rmsd"], s=10, color=PALETTE["reference"], zorder=3
+            x,
+            group["best_rmsd"],
+            s=10,
+            color=PALETTE["reference"],
+            zorder=3,
+            label="Best conformer",
         )
         ax.scatter(
             paired_x,
@@ -578,6 +632,7 @@ def plot_rmsd_small_multiples(
             s=10,
             color=PALETTE["crystal"],
             zorder=3,
+            label="Typical conformer",
         )
         for threshold in config.rmsd_thresholds:
             ax.axhline(
@@ -588,35 +643,19 @@ def plot_rmsd_small_multiples(
                 alpha=0.38,
             )
         ax.set_title(method, fontsize=10)
+        ax.set_xlabel(f"n={len(group)}", fontsize=8)
         ax.tick_params(axis="x", labelbottom=False, length=0)
         ax.grid(axis="y", color=PALETTE["grid"], linewidth=0.7)
         ax.spines[["top", "right"]].set_visible(False)
+        if panel_index == 0:
+            ax.legend(loc="upper left", fontsize=7, frameon=False)
 
     _hide_unused(axes, len(methods))
     axes.flat[0].set_ylabel("RMSD (Å)")
     if config.rmsd_ylim:
         axes.flat[0].set_ylim(*config.rmsd_ylim)
-    handles = [
-        plt.Line2D(
-            [],
-            [],
-            marker="o",
-            linestyle="",
-            color=PALETTE["reference"],
-            label="Best conformer",
-        ),
-        plt.Line2D(
-            [],
-            [],
-            marker="o",
-            linestyle="",
-            color=PALETTE["crystal"],
-            label="Typical conformer",
-        ),
-    ]
-    fig.legend(handles=handles, loc="upper center", ncols=2, frameon=False)
-    fig.suptitle("Best versus typical RMSD by ligand", fontsize=15, y=1.02)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.suptitle("Best versus typical RMSD by ligand", fontsize=15, y=0.995)
+    fig.tight_layout(rect=(0.01, 0, 1, 0.96))
     return _finish(fig, path, 170)
 
 
@@ -639,21 +678,27 @@ def plot_rmsd_boxplot(
         tick_labels=ordered,
         patch_artist=True,
         widths=0.58,
-        medianprops={"color": "white", "linewidth": 1.5},
-        flierprops={"marker": ".", "markersize": 3, "alpha": 0.35},
+        medianprops={"color": "#8A3B1E", "linewidth": 1.8},
+        boxprops={"facecolor": "#DCEAF3", "edgecolor": "#2A6F97"},
+        whiskerprops={"color": "#2A6F97"},
+        capprops={"color": "#2A6F97"},
+        flierprops={
+            "marker": "o",
+            "markersize": 3,
+            "alpha": 0.4,
+            "markeredgewidth": 0,
+            "color": "#888888",
+        },
     )
-    for box, method in zip(bp["boxes"], ordered):
-        box.set_facecolor(_method_color(method, frame, config))
-        box.set_alpha(0.8)
     rng = np.random.default_rng(config.seed)
     for position, method in enumerate(ordered, start=1):
         method_values = values[method].to_numpy()
         ax.scatter(
-            position + rng.normal(0, 0.055, size=len(method_values)),
+            position + rng.uniform(-0.12, 0.12, size=len(method_values)),
             method_values,
             s=9,
-            color=PALETTE["text"],
-            alpha=0.22,
+            color="#2A6F97",
+            alpha=0.35,
             linewidths=0,
             zorder=3,
         )

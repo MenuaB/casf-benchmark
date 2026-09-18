@@ -177,9 +177,8 @@ def test_complete_detailed_plot_suite_includes_crystal_and_all_methods() -> None
 
     assert "layer" not in crystal
     assert len(method_energy["layer"]) == 2
-    all_energies = pd.to_numeric(view["energy_median"], errors="coerce").dropna()
-    assert energy_domain[0] < all_energies.min()
-    assert energy_domain[1] > all_energies.max()
+    assert energy_domain == [-200.0, 420.0]
+    assert rmsd_domain == [0.0, 2.6]
     assert delta["title"] == "Deviation from CASF crystal"
     assert paired_energy["layer"][0]["encoding"]["x"]["field"] == "ligand_rank"
     assert paired_energy["layer"][0]["encoding"]["y"]["field"] == "energy_low"
@@ -191,6 +190,39 @@ def test_complete_detailed_plot_suite_includes_crystal_and_all_methods() -> None
     assert rmsd_distribution["layer"][-1]["encoding"]["x"]["field"] == (
         "casf_best_rmsd"
     )
+
+
+def test_reference_report_order_and_delta_sort_are_preserved() -> None:
+    charts = load_report_charts()
+    methods = [
+        "CASF crystal",
+        "Qwen 4B revisited",
+        "LOQI",
+        "Torsion perturb (raw)",
+    ]
+    assert charts.report_method_order(methods, reference_last=True) == [
+        "Torsion perturb (raw)",
+        "LOQI",
+        "Qwen 4B revisited",
+        "CASF crystal",
+    ]
+
+    view = charts.filter_report_rows(
+        report_rows(),
+        ligand_set="core",
+        tier="fixed",
+        family="All",
+    )
+    chart = charts.energy_delta_distribution_chart(view).to_dict()
+    method_sort = chart["layer"][1]["encoding"]["y"]["sort"]
+    assert method_sort == ["ChEMBL3D ground truth", "Qwen model", "Other model"]
+
+
+def test_report_defaults_to_chembl_count_when_sidebar_tier_is_all() -> None:
+    source = (
+        REPO_ROOT / "apps" / "dashboard" / "report_analysis_charts.py"
+    ).read_text(encoding="utf-8")
+    assert 'tiers.index("chembl_count")' in source
 
 
 def test_rmsd_order_can_come_from_hidden_reference_rows() -> None:

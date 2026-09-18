@@ -16,7 +16,26 @@ import streamlit as st
 
 REFERENCE_METHOD = "CASF crystal"
 RMSD_ORDER_METHOD = "ChEMBL3D ground truth"
-PANEL_COLUMNS = 3
+PANEL_COLUMNS = 4
+ENERGY_Y_DOMAIN = [-200.0, 420.0]
+RMSD_Y_DOMAIN = [0.0, 2.6]
+REFERENCE_METHOD_ORDER = (
+    "Torsion perturb (raw)",
+    "Torsion (raw)",
+    "Torsional Diffusion",
+    "RDKit random (raw)",
+    "RDKit (raw)",
+    "MCF drugs-L",
+    "NextMol DMT-L",
+    "NExT-Mol DMT-L",
+    "RDKit random (minimized)",
+    "RDKit (minimized)",
+    "Torsion perturb (minimized)",
+    "Torsion (minimized)",
+    "LOQI",
+    RMSD_ORDER_METHOD,
+    "ChEMBL3D GT",
+)
 CATEGORY_COLORS = {
     "Qwen": "#4A3AA7",
     "Other generation": "#EB6834",
@@ -263,6 +282,29 @@ def _filter_methods(frame: pd.DataFrame, methods: Iterable[str]) -> pd.DataFrame
     return frame[frame["plot_method"].astype(str).isin(selected)].copy()
 
 
+def report_method_order(
+    methods: Iterable[str],
+    *,
+    reference_last: bool = False,
+) -> list[str]:
+    """Use the HTML report order, then append new methods deterministically."""
+
+    unique = list(dict.fromkeys(str(method) for method in methods))
+    preferred = [method for method in REFERENCE_METHOD_ORDER if method in unique]
+    remaining = [method for method in unique if method not in set(preferred)]
+    remaining.sort(
+        key=lambda method: (
+            0 if "qwen" in method.lower() else 1,
+            method.casefold(),
+        )
+    )
+    ordered = [*preferred, *remaining]
+    if reference_last and REFERENCE_METHOD in ordered:
+        ordered.remove(REFERENCE_METHOD)
+        ordered.append(REFERENCE_METHOD)
+    return ordered
+
+
 def ranked_bar_chart(
     summary: pd.DataFrame,
     *,
@@ -447,16 +489,8 @@ def energy_detail_chart(frame: pd.DataFrame, method: str):
     )
 
 
-def _ordered_with_reference_first(methods: Iterable[str]) -> list[str]:
-    ordered = list(dict.fromkeys(str(method) for method in methods))
-    if REFERENCE_METHOD in ordered:
-        ordered.remove(REFERENCE_METHOD)
-        ordered.insert(0, REFERENCE_METHOD)
-    return ordered
-
-
 def energy_panel_domain(frame: pd.DataFrame) -> list[float] | None:
-    """Return one median-energy domain shared by every method panel."""
+    """Return the shared domain used by the source HTML report."""
 
     values = (
         _numeric(frame, "energy_median")
@@ -465,10 +499,7 @@ def energy_panel_domain(frame: pd.DataFrame) -> list[float] | None:
     )
     if values.empty:
         return None
-    low = float(values.min())
-    high = float(values.max())
-    pad = max((high - low) * 0.08, abs(high) * 0.01, 1.0)
-    return [low - pad, high + pad]
+    return ENERGY_Y_DOMAIN.copy()
 
 
 def energy_small_multiple_chart(
@@ -492,7 +523,12 @@ def energy_small_multiple_chart(
     data["ligand_rank"] = np.arange(1, len(data) + 1)
     data["energy_low"] = data["energy_median"] - data["energy_std"]
     data["energy_high"] = data["energy_median"] + data["energy_std"]
-    color = "#F28E2B" if method == REFERENCE_METHOD else "#2A78D6"
+    if method == REFERENCE_METHOD:
+        color = "#C8552E"
+    elif method_category(method) == "Qwen":
+        color = "#8A3B1E"
+    else:
+        color = "#2A6F97"
     y = alt.Y(
         "energy_median:Q",
         title="Median energy (kcal/mol)",
@@ -541,8 +577,11 @@ def energy_delta_distribution_chart(frame: pd.DataFrame):
         method_column="plot_method",
         category_column="plot_category",
     )
+    summary["absolute_median"] = summary["median"].abs()
     order = (
-        summary.sort_values(["median", "method"])["method"].astype(str).tolist()
+        summary.sort_values(["absolute_median", "method"])["method"]
+        .astype(str)
+        .tolist()
     )
     jittered: list[pd.DataFrame] = []
     for _, group in rows.sort_values(["plot_method", "mol_id"]).groupby(
@@ -809,8 +848,7 @@ def rmsd_panel_domain(frame: pd.DataFrame) -> list[float] | None:
     )
     if values.empty:
         return None
-    high = float(values.max())
-    return [0.0, max(1.0, high * 1.05)]
+    return RMSD_Y_DOMAIN.copy()
 
 
 def rmsd_distribution_chart(frame: pd.DataFrame):
@@ -1006,7 +1044,7 @@ def render_report_analysis(
         return
 
     if tier == "All":
-        default_index = tiers.index("fixed") if "fixed" in tiers else 0
+        default_index = tiers.index("chembl_count") if "chembl_count" in tiers else 0
         plot_tier = st.selectbox(
             "Report tier",
             tiers,
@@ -1027,8 +1065,10 @@ def render_report_analysis(
         st.info("No per-ligand rows match the active dashboard filters.")
         return
 
-    all_methods = sorted(frame["plot_method"].dropna().astype(str).unique())
-    generation_methods = sorted(
+    all_methods = report_method_order(
+        frame["plot_method"].dropna().astype(str).unique()
+    )
+    generation_methods = report_method_order(
         frame.loc[
             frame["row_type"].astype(str) == "generation",
             "plot_method",
@@ -1100,7 +1140,7 @@ def render_report_analysis(
             st.altair_chart(scatter, width="stretch")
 
     with energy_tab:
-        energy_methods = _ordered_with_reference_first(
+        energy_methods = report_method_order(
             [
                 method
                 for method in selected_methods
@@ -1108,7 +1148,8 @@ def render_report_analysis(
                     selected[selected["plot_method"].astype(str) == method],
                     "energy_median",
                 ).notna().any()
-            ]
+            ],
+            reference_last=True,
         )
         if energy_methods:
             st.subheader("One by one, side by side")
