@@ -22,7 +22,7 @@ from pathlib import Path
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdDistGeom, rdMolTransforms
 
-from casf_benchmark.chembl3d.identity import parse_optional_int
+from casf_benchmark.chembl3d.identity import parse_optional_int, validate_stereo_mapping_csv
 from casf_benchmark.chembl3d.loader import load_torsion_ref
 from casf_benchmark.paths import (
     DEFAULT_CASF16_DATA,
@@ -2033,9 +2033,11 @@ def load_intersection_molecules(
     offset: int,
 ) -> list[InputMolecule]:
     molecules: list[InputMolecule] = []
+    raw_rows: list[dict[str, str]] = []
     with chembl_map_csv.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
+            raw_rows.append(row)
             ligand_id = row["ligand_id"].strip()
             smiles = row.get("chembl3d_isomeric_smiles") or row.get("casf_heavy_isomeric_smiles") or ""
             source_file = row.get("source_file", f"{ligand_id}.mol2").strip()
@@ -2053,6 +2055,7 @@ def load_intersection_molecules(
                     chembl3d_sdf_record_index=parse_optional_int(row.get("chembl3d_sdf_record_index")),
                 )
             )
+    validate_stereo_mapping_csv(raw_rows, path=chembl_map_csv)
 
     if offset:
         if offset >= len(molecules):

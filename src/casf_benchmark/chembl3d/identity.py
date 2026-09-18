@@ -12,7 +12,8 @@ heavy isomeric SMILES **and** InChI stereo layers (``/t``, ``/b``, ``/m``, ``/s`
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from pathlib import Path
+from typing import Mapping, Sequence
 import hashlib
 
 try:
@@ -24,6 +25,13 @@ else:
     RDKIT_IMPORT_ERROR = None
 
 INCHI_STEREO_LAYER_PREFIXES = ("b", "t", "m", "s")
+
+REQUIRED_STEREO_MAPPING_COLUMNS = (
+    "ligand_id",
+    "chembl3d_group",
+    "chembl3d_mol_id",
+    "chembl3d_sdf_record_index",
+)
 
 
 class StereoIdentityError(ValueError):
@@ -131,6 +139,73 @@ def parse_optional_int(value: object) -> int | None:
     if text in {"", "nan", "NaN", "None", "<NA>"}:
         return None
     return int(float(text))
+
+
+def validate_stereo_mapping_csv(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    path: str | Path = "<mapping>",
+    require_conformer_count: bool = True,
+) -> None:
+    """Fail fast when an intersection CSV is missing stereo-identity columns.
+
+    Fresh generation and analysis require ``chembl3d_sdf_record_index`` on every
+    row so loaders never fall back to scanning ambiguous Flipper siblings. When
+    ``require_conformer_count`` is true (default), ``conformer_count`` must also be
+    present — that value must come from a zarr-backed rematch, not the unfiltered
+    index count copied onto every stereoisomer.
+    """
+    label = str(path)
+    if not rows:
+        raise ValueError(f"No rows found in {label}")
+    columns = set(rows[0].keys())
+    missing_columns = [column for column in REQUIRED_STEREO_MAPPING_COLUMNS if column not in columns]
+    if missing_columns:
+        raise ValueError(
+            f"{label} is missing required stereo mapping column(s): {', '.join(missing_columns)}. "
+            "Run casf-match-casf16-chembl3d with --zarr-root and copy the rematched CSV."
+        )
+    if require_conformer_count and "conformer_count" not in columns:
+        raise ValueError(
+            f"{label} is missing conformer_count. "
+            "Rematch with --zarr-root so tier sizes use the filtered stereoisomer ensemble."
+        )
+
+    missing_smiles: list[str] = []
+    missing_record_index: list[str] = []
+    missing_conformer_count: list[str] = []
+    for row in rows:
+        ligand_id = str(row.get("ligand_id", "")).strip() or "<unknown>"
+        smiles = str(
+            row.get("chembl3d_isomeric_smiles") or row.get("casf_heavy_isomeric_smiles") or ""
+        ).strip()
+        if not smiles:
+            missing_smiles.append(ligand_id)
+        if parse_optional_int(row.get("chembl3d_sdf_record_index")) is None:
+            missing_record_index.append(ligand_id)
+        if require_conformer_count:
+            raw_count = str(row.get("conformer_count", "")).strip()
+            if raw_count in {"", "nan", "NaN", "None", "<NA>"}:
+                missing_conformer_count.append(ligand_id)
+
+    if missing_smiles:
+        preview = ", ".join(sorted(missing_smiles)[:5])
+        suffix = f" (+{len(missing_smiles) - 5} more)" if len(missing_smiles) > 5 else ""
+        raise ValueError(f"{label}: row(s) missing chembl3d_isomeric_smiles: {preview}{suffix}")
+    if missing_record_index:
+        preview = ", ".join(sorted(missing_record_index)[:5])
+        suffix = f" (+{len(missing_record_index) - 5} more)" if len(missing_record_index) > 5 else ""
+        raise ValueError(
+            f"{label}: row(s) missing chembl3d_sdf_record_index: {preview}{suffix}. "
+            "Re-run casf-match-casf16-chembl3d with topology + zarr."
+        )
+    if missing_conformer_count:
+        preview = ", ".join(sorted(missing_conformer_count)[:5])
+        suffix = f" (+{len(missing_conformer_count) - 5} more)" if len(missing_conformer_count) > 5 else ""
+        raise ValueError(
+            f"{label}: row(s) missing conformer_count: {preview}{suffix}. "
+            "Rematch with --zarr-root for filtered stereoisomer counts."
+        )
 
 
 def expected_identity_from_mapping(row: Mapping[str, object]) -> tuple[str, int | None]:

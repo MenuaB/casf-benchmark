@@ -80,17 +80,25 @@ cd casf-benchmark  # pip install -e ".[dev]" once
 # Core (~94 ligands)
 casf-match-casf16-chembl3d \
   --ligand-dir $CASF_BENCHMARK_DATA_ROOT/data/casf16/CASF16/ligands \
+  --topology-root $CASF_BENCHMARK_DATA_ROOT/data/chembl3d/topologies \
+  --zarr-root $CASF_BENCHMARK_DATA_ROOT/data/chembl3d/zarr_database \
+  --require-zarr \
   --output-csv $CASF_BENCHMARK_DATA_ROOT/data/casf16/casf16_core_chembl3d_exact_intersection.csv
 
 # Ref (~1219 ligands) — must pass --output-csv (script default is core path)
 casf-match-casf16-chembl3d \
   --ligand-dir $CASF_BENCHMARK_DATA_ROOT/data/casf16/CASF16_REF/ligands \
+  --topology-root $CASF_BENCHMARK_DATA_ROOT/data/chembl3d/topologies \
+  --zarr-root $CASF_BENCHMARK_DATA_ROOT/data/chembl3d/zarr_database \
+  --require-zarr \
   --output-csv $CASF_BENCHMARK_DATA_ROOT/data/casf16/casf16_ref_chembl3d_exact_intersection.csv
 ```
 
-Overrides: `--chembl-index`, `--topology-root`, `--zarr-root`. CPU only; requires RDKit + `casf_benchmark.generation.conformer_sets.get_rotatable_torsions`. Filtered `conformer_count` needs the zarr archive; without it the script still writes record index / InChI stereo and copies the index count.
+Overrides: `--chembl-index`, `--topology-root`, `--zarr-root`, `--require-zarr`. CPU only; requires RDKit + `casf_benchmark.generation.conformer_sets.get_rotatable_torsions`.
 
-**Retain console diagnostics:** `casf_ligands_processed`, `exact_matched_ligands`, `wrong_first_topology_ligands`, `excluded_*` counts and ligand lists.
+**Fresh pipeline runs:** always pass `--zarr-root` (or `--require-zarr` to fail if it is missing). Generation, materialization, and analysis validate the intersection CSV and refuse to start when any row lacks `chembl3d_sdf_record_index` or `conformer_count`. Without zarr, rematch still writes stereo columns but copies the unfiltered index count onto every stereoisomer — wrong for `chembl_count` tiers.
+
+**Retain console diagnostics:** `casf_ligands_processed`, `exact_matched_ligands`, `wrong_first_topology_ligands`, `rows_missing_sdf_record_index` (must be 0), `excluded_*` counts and ligand lists.
 
 ## Intersection ligand directory
 

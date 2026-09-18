@@ -14,13 +14,13 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 
 from casf_benchmark.chembl3d.identity import (
-    AmbiguousStereoIdentityError,
     StereoIdentityMismatchError,
     expected_identity_from_mapping,
     mol_matches_expected_smiles,
     stereo_cache_token,
     stereo_identity_from_mol,
     stereo_identity_from_smiles,
+    validate_stereo_mapping_csv,
 )
 from casf_benchmark.chembl3d.loader import (
     count_matching_chembl3d_conformers,
@@ -166,13 +166,14 @@ def test_load_topology_no_match_returns_none(tmp_path):
     )
 
 
-def test_load_topology_ambiguous_matches_raise(tmp_path):
+def test_load_topology_duplicate_same_stereo_keeps_first_record(tmp_path):
     a_smiles, _b_smiles, mol_a, _mol_b, _topology_root = stereo_pair(tmp_path)
     topology_root = tmp_path / "dup"
     topology_root.mkdir()
     write_sdf(topology_root / f"{GROUP}.sdf", [mol_a, Chem.Mol(mol_a)])
-    with pytest.raises(AmbiguousStereoIdentityError, match="Multiple topology SDF records"):
-        load_topology_mol(GROUP, MOL_ID, topology_root, expected_smiles=a_smiles)
+    loaded = load_topology_mol(GROUP, MOL_ID, topology_root, expected_smiles=a_smiles)
+    assert loaded is not None
+    assert loaded.GetProp("chembl3d_sdf_record_index") == "0"
 
 
 def test_first_record_already_requested_still_works(tmp_path):
@@ -368,6 +369,54 @@ def test_matching_filtered_conformer_count_uses_stereo(tmp_path):
     )
     assert rows[0]["conformer_count"] == 2
     assert rows[0]["chembl3d_index_conformer_count"] == 99
+
+
+def test_validate_stereo_mapping_csv_accepts_rematched_row():
+    validate_stereo_mapping_csv(
+        [
+            {
+                "ligand_id": "lig_a",
+                "chembl3d_group": "001",
+                "chembl3d_mol_id": MOL_ID,
+                "chembl3d_isomeric_smiles": A_SMILES,
+                "chembl3d_sdf_record_index": 1,
+                "conformer_count": 2,
+            }
+        ],
+        path="map.csv",
+    )
+
+
+def test_validate_stereo_mapping_csv_rejects_missing_record_index():
+    with pytest.raises(ValueError, match="chembl3d_sdf_record_index"):
+        validate_stereo_mapping_csv(
+            [
+                {
+                    "ligand_id": "lig_a",
+                    "chembl3d_group": "001",
+                    "chembl3d_mol_id": MOL_ID,
+                    "chembl3d_isomeric_smiles": A_SMILES,
+                    "conformer_count": 2,
+                }
+            ],
+            path="map.csv",
+        )
+
+
+def test_validate_stereo_mapping_csv_rejects_missing_conformer_count():
+    with pytest.raises(ValueError, match="conformer_count"):
+        validate_stereo_mapping_csv(
+            [
+                {
+                    "ligand_id": "lig_a",
+                    "chembl3d_group": "001",
+                    "chembl3d_mol_id": MOL_ID,
+                    "chembl3d_isomeric_smiles": A_SMILES,
+                    "chembl3d_sdf_record_index": 1,
+                }
+            ],
+            path="map.csv",
+        )
 
 
 def test_mapping_identity_helper_reads_record_index():

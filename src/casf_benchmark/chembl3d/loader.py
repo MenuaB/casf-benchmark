@@ -132,7 +132,7 @@ def load_topology_mol(
     ``(group, mol_id)`` is not unique: Flipper stereoisomers share a parent id.
     When ``sdf_record_index`` is set, that record is loaded and **validated**.
     Otherwise every record with that id is scanned. Zero matches return ``None``;
-    more than one remaining match raises ``AmbiguousStereoIdentityError``.
+    duplicate records with the same stereo keep the lowest index.
     """
     _require_rdkit()
     expected = _require_expected_smiles(expected_smiles)
@@ -185,10 +185,12 @@ def load_topology_mol(
         return None
     if len(matches) > 1:
         indices = [index for index, _ in matches]
-        raise AmbiguousStereoIdentityError(
-            f"Multiple topology SDF records match {mol_id} stereo {expected!r} in {sdf_path}: "
-            f"record_indices={indices}"
+        print(
+            f"WARNING: duplicate topology SDF records match {mol_id} stereo {expected!r} "
+            f"in {sdf_path}: record_indices={indices}; using {min(indices)}",
+            flush=True,
         )
+        matches.sort(key=lambda item: item[0])
     record_index, selected = matches[0]
     selected.SetProp("chembl3d_sdf_record_index", str(record_index))
     return selected

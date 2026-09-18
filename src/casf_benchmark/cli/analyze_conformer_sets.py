@@ -35,7 +35,11 @@ from casf_benchmark.analysis.metrics import (
     safe_sum,
     threshold_tag,
 )
-from casf_benchmark.chembl3d.identity import expected_identity_from_mapping, stereo_cache_token
+from casf_benchmark.chembl3d.identity import (
+    expected_identity_from_mapping,
+    stereo_cache_token,
+    validate_stereo_mapping_csv,
+)
 from casf_benchmark.chembl3d.loader import (
     load_chembl3d_conformers,
     load_topology_mol,
@@ -405,6 +409,7 @@ def load_chembl_map(path: Path) -> pd.DataFrame:
         preview = ", ".join(ligand_ids[:5])
         suffix = f" (+{len(ligand_ids) - 5} more)" if len(ligand_ids) > 5 else ""
         raise ValueError(f"Duplicate ligand_id row(s) in {path}: {preview}{suffix}")
+    validate_stereo_mapping_csv(df.to_dict(orient="records"), path=path)
     return df
 
 

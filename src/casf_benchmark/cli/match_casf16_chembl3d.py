@@ -20,7 +20,6 @@ else:
     RDKIT_IMPORT_ERROR = None
 
 from casf_benchmark.chembl3d.identity import (
-    AmbiguousStereoIdentityError,
     StereoIdentity,
     identities_match,
     stereo_identity_from_mol,
@@ -307,15 +306,17 @@ def pick_chembl_hit(
     if topology_index is not None:
         for hit in hits:
             matches = matching_topology_records(hit, topology_index)
+            if not matches:
+                continue
             if len(matches) > 1:
                 indices = [record.sdf_record_index for record in matches]
-                raise AmbiguousStereoIdentityError(
-                    f"Multiple topology SDF records match {hit.mol_id} stereo "
-                    f"{hit.isomeric_canonical_smiles!r}: record_indices={indices}"
+                print(
+                    f"WARNING: duplicate topology SDF records match {hit.mol_id} stereo "
+                    f"{hit.isomeric_canonical_smiles!r}: record_indices={indices}; "
+                    f"using {min(indices)}",
+                    flush=True,
                 )
-            if len(matches) != 1:
-                continue
-            record = matches[0]
+            record = min(matches, key=lambda item: item.sdf_record_index)
             first_index = min(item.sdf_record_index for item in topology_index.get((hit.group, hit.mol_id), [record]))
             inchi_stereo = record.identity.inchi_stereo if record.identity is not None else ""
             return SelectedChemblHit(
@@ -483,7 +484,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "ChEMBL3D zarr root used to recount conformer_count for the selected "
             "stereoisomer. If missing, conformer_count is copied from the index "
-            "(chembl3d_index_conformer_count)."
+            "(chembl3d_index_conformer_count) unless --require-zarr is set."
+        ),
+    )
+    parser.add_argument(
+        "--require-zarr",
+        action="store_true",
+        help=(
+            "Exit with an error when --zarr-root is missing. Use this for fresh "
+            "pipeline runs so chembl_count tiers use filtered stereoisomer ensembles."
         ),
     )
     parser.add_argument("--output-csv", type=Path, default=DEFAULT_OUTPUT_CSV)
@@ -515,11 +524,13 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
 
     zarr_root = args.zarr_root if args.zarr_root.exists() else None
     if zarr_root is None:
-        print(
+        message = (
             f"zarr_root_missing={args.zarr_root}; "
-            "conformer_count will use unfiltered index counts until rematch with zarr",
-            flush=True,
+            "conformer_count will use unfiltered index counts until rematch with zarr"
         )
+        if args.require_zarr:
+            raise SystemExit(message)
+        print(message, flush=True)
 
     rows, excluded = build_exact_match_rows(
         casf_by_ligand,
@@ -541,6 +552,13 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
     if wrong_first:
         print(f"wrong_first_topology_ligand_ids={','.join(sorted(wrong_first))}", flush=True)
     print(f"rows_missing_sdf_record_index={len(missing_record_index)}", flush=True)
+    if missing_record_index:
+        preview = ", ".join(sorted(missing_record_index)[:5])
+        suffix = f" (+{len(missing_record_index) - 5} more)" if len(missing_record_index) > 5 else ""
+        raise SystemExit(
+            "Rematch produced rows without chembl3d_sdf_record_index: "
+            f"{preview}{suffix}. Topology resolution failed for those ligands."
+        )
     for reason, ligand_ids in excluded.items():
         print(f"excluded_{reason}={len(ligand_ids)}", flush=True)
         if ligand_ids:
