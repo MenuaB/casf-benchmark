@@ -66,10 +66,15 @@ def test_legacy_release_tag_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_a_formerly_pinned_default_now_falls_back_to_latest(monkeypatch: pytest.MonkeyPatch) -> None:
-    # dashboard-data-druglike-ots-v1 used to be DEFAULT_RELEASE_TAG itself; a secret
-    # still holding it should move forward to "latest" rather than stay frozen.
-    monkeypatch.setenv("CASF_DASHBOARD_RELEASE", "dashboard-data-druglike-ots-v1")
-    assert release_data.release_tag() == release_data.LATEST_TAG
+    # These tags used to be the dashboard pin. A secret still holding one should
+    # move forward to "latest" rather than stay frozen.
+    for tag in (
+        "dashboard-data-druglike-ots-v1",
+        "dashboard-data-druglike-ots-v2",
+        "dashboard-data-druglike-k-v1",
+    ):
+        monkeypatch.setenv("CASF_DASHBOARD_RELEASE", tag)
+        assert release_data.release_tag() == release_data.LATEST_TAG
 
 
 def test_default_release_tag_is_latest() -> None:

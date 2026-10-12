@@ -483,17 +483,18 @@ _FETCH_LOCK = threading.Lock()
 # older editable install of casf-benchmark is still cached in the runtime image.
 # Do not read new attributes off `release_data` here: Cloud crashed on
 # `release_data.LATEST_TAG` while still serving the pre-latest package.
-# Stale `release_tag()` still returns ots-v2; force a concrete tag that the
-# old `.../releases/download/{tag}/...` URL can fetch (the `latest` alias
-# exists only in a newer package).
+# Stale `release_tag()` still returns ots-v2 or the previous forced pin;
+# force a concrete tag that the old `.../releases/download/{tag}/...` URL
+# can fetch (the `latest` alias exists only in a newer package).
 _LEGACY_RELEASE_TAGS = frozenset(
     {
         "dashboard-data-qwen-druglike",
         "dashboard-data-druglike-ots-v1",
         "dashboard-data-druglike-ots-v2",
+        "dashboard-data-druglike-k-v1",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-druglike-k-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-druglike-baselines-v1"
 
 
 def effective_release_tag() -> str:

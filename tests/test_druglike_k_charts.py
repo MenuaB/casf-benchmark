@@ -53,6 +53,10 @@ def test_dashboard_k_charts_keep_the_six_method_panel() -> None:
     assert set(filtered["label"]) == {"qwen_1p7b_fsq_bigdata_step47023", "loqi_druglike"}
     assert set(filtered["plot_label"]) == {"Qwen 1.7B FSQ", "LOQI"}
     assert set(filtered["label"]).issubset(charts.PLOT_LABELS)
+    assert {
+        "rdkit_random_raw_druglike",
+        "torsion_raw_druglike",
+    }.issubset(charts.PLOT_LABELS)
 
 
 def test_long_metric_pair_and_chart_cover_recall_and_precision() -> None:

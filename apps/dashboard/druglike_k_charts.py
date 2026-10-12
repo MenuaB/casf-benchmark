@@ -16,6 +16,8 @@ PLOT_LABELS = (
     "torsional_diffusion_druglike",
     "mcf_drugs_l_druglike",
     "flowr_druglike",
+    "rdkit_random_raw_druglike",
+    "torsion_raw_druglike",
 )
 
 CHARTS = (
@@ -130,7 +132,8 @@ def render_druglike_k_charts(summary: pd.DataFrame) -> None:
     st.caption(
         "Attempted-K on the raw ~1000-conformer pool (random subsample, 3 seeds, "
         "23 molecules). Solid = recall, dashed = precision. Panel: Qwen 1.7B FSQ, "
-        "LOQI, NExT-Mol DMT-L, Torsional Diffusion, MCF drugs-L, FlowR."
+        "LOQI, NExT-Mol DMT-L, Torsional Diffusion, MCF drugs-L, FlowR, "
+        "RDKit random (raw), Torsion perturb (raw)."
     )
     for index in range(0, len(CHARTS), 2):
         columns = st.columns(2)

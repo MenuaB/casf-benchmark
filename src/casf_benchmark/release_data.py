@@ -48,7 +48,14 @@ DEFAULT_RELEASE_REPO = "YerevaNN/casf-benchmark"
 #: Tags a Streamlit Cloud secret may still pin from before "latest" became the
 #: default. Ignore them so results move forward with no edit to the secret --
 #: pin to a concrete tag deliberately (e.g. to roll back) if you don't want that.
-LEGACY_RELEASE_TAGS = frozenset({"dashboard-data-qwen-druglike", "dashboard-data-druglike-ots-v1"})
+LEGACY_RELEASE_TAGS = frozenset(
+    {
+        "dashboard-data-qwen-druglike",
+        "dashboard-data-druglike-ots-v1",
+        "dashboard-data-druglike-ots-v2",
+        "dashboard-data-druglike-k-v1",
+    }
+)
 
 #: The only paths this module will ever write. Keyed by location rather than by
 #: bare filename so that a DB the operator pointed us at elsewhere is never

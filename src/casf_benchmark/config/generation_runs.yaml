@@ -140,3 +140,20 @@ runs:
     recipe: "flowr_root_v2.2 checkpoint"
     cohorts:
       druglike: /mnt/weka/vtarasov/code/flowr_root/gen_results/flowr_druglike
+
+  # CASF raw baselines (rdkit_random_raw / torsion_raw fixed tier) re-run on the
+  # druglike set by scripts/run_baseline_druglike.py; the torsion seed is each
+  # molecule's first crystal conformer.
+  - label: rdkit_random_raw_druglike
+    generator: RDKit
+    display_label: "RDKit random (raw)"
+    recipe: "ETKDGv3 random coords, no minimization"
+    cohorts:
+      druglike: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/druglike_baselines/gen_results/rdkit_random_raw_druglike
+
+  - label: torsion_raw_druglike
+    generator: Torsion perturb
+    display_label: "Torsion perturb (raw)"
+    recipe: "crystal seed, +/-120 deg, DG clash 0.7"
+    cohorts:
+      druglike: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/druglike_baselines/gen_results/torsion_raw_druglike

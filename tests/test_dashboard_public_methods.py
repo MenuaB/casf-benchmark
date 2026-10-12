@@ -17,6 +17,12 @@ def load_dashboard() -> ModuleType:
     return module
 
 
+def test_stale_release_pin_follows_the_druglike_baselines(monkeypatch) -> None:
+    dashboard = load_dashboard()
+    monkeypatch.setattr(dashboard.release_data, "release_tag", lambda: "dashboard-data-druglike-k-v1")
+    assert dashboard.effective_release_tag() == "dashboard-data-druglike-baselines-v1"
+
+
 def test_public_qwen_allowlist_preserves_non_qwen_rows() -> None:
     dashboard = load_dashboard()
     frame = pd.DataFrame(
