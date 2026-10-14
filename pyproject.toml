@@ -27,6 +27,7 @@ dev = [
 
 [project.scripts]
 casf-analyze-conformer-sets = "casf_benchmark.cli.analyze_conformer_sets:main"
+casf-analyze-plinder = "casf_benchmark.cli.analyze_plinder:main"
 casf-analyze-casf16-ligands = "casf_benchmark.cli.analyze_casf16_ligands:main"
 casf-build-dashboard-db = "casf_benchmark.cli.build_dashboard_db:main"
 casf-build-master-csv = "casf_benchmark.cli.build_master_csv:main"

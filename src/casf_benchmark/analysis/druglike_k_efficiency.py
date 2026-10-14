@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -47,6 +48,108 @@ def subsample_columns(matrix: np.ndarray, k: int, rng: np.random.Generator) -> n
     return matrix[:, indices]
 
 
+def _mean(values: list[float]) -> float:
+    array = np.asarray(values, dtype=float)
+    if array.size == 0 or np.isnan(array).all():
+        return float("nan")
+    return float(np.nanmean(array))
+
+
+def _median(values: list[float]) -> float:
+    array = np.asarray(values, dtype=float)
+    if array.size == 0 or np.isnan(array).all():
+        return float("nan")
+    return float(np.nanmedian(array))
+
+
+def k_rows_at_thresholds(
+    matrices: dict[str, np.ndarray],
+    k_values: list[int],
+    thresholds: Sequence[float],
+    *,
+    n_seeds: int,
+    seed: int,
+    inclusive: bool = True,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """COV at each threshold and MAT once per K.
+
+    Each K draw is taken once per seed. Matching distances are averaged across
+    seeds a single time, then copied onto every threshold row. Coverage is the
+    only quantity that changes with the cutoff.
+    """
+    from casf_benchmark.analysis.druglike_covmat import coverage_fraction, finite_axis_min
+
+    threshold_list = [float(value) for value in thresholds]
+    if not threshold_list:
+        raise ValueError("thresholds must contain at least one cutoff")
+    per_molecule: list[dict[str, object]] = []
+    summary: list[dict[str, object]] = []
+    smiles_order = list(matrices)
+
+    for k in k_values:
+        k = int(k)
+        seed_mat: dict[str, list[tuple[float, float]]] = {smiles: [] for smiles in smiles_order}
+        seed_cov: dict[str, dict[float, list[tuple[float, float]]]] = {
+            smiles: {threshold: [] for threshold in threshold_list} for smiles in smiles_order
+        }
+        for replicate in range(int(n_seeds)):
+            for smiles in smiles_order:
+                rng = np.random.default_rng(stable_seed(seed, replicate, k, smiles))
+                sampled = subsample_columns(matrices[smiles], k, rng)
+                min_true = finite_axis_min(sampled, axis=1)
+                min_generated = finite_axis_min(sampled, axis=0)
+                finite_true = min_true[np.isfinite(min_true)]
+                finite_generated = min_generated[np.isfinite(min_generated)]
+                mat_r = float(np.mean(finite_true)) if finite_true.size else float("nan")
+                mat_p = float(np.mean(finite_generated)) if finite_generated.size else float("nan")
+                seed_mat[smiles].append((mat_r, mat_p))
+                for threshold in threshold_list:
+                    seed_cov[smiles][threshold].append(
+                        (
+                            coverage_fraction(finite_true, threshold, inclusive=inclusive),
+                            coverage_fraction(finite_generated, threshold, inclusive=inclusive),
+                        )
+                    )
+        for threshold in threshold_list:
+            mol_rows = []
+            for smiles in smiles_order:
+                mat_draws = seed_mat[smiles]
+                cov_draws = seed_cov[smiles][threshold]
+                n_gen = int(matrices[smiles].shape[1])
+                mol_rows.append(
+                    {
+                        "smiles": smiles,
+                        "k": k,
+                        "threshold": threshold,
+                        "n_seeds": int(n_seeds),
+                        "n_gen_confs": n_gen,
+                        "n_sampled": int(min(k, n_gen)),
+                        "cov_r": _mean([pair[0] for pair in cov_draws]),
+                        "cov_p": _mean([pair[1] for pair in cov_draws]),
+                        "mat_r": _mean([pair[0] for pair in mat_draws]),
+                        "mat_p": _mean([pair[1] for pair in mat_draws]),
+                    }
+                )
+            per_molecule.extend(mol_rows)
+            summary.append(
+                {
+                    "k": k,
+                    "threshold": threshold,
+                    "n_seeds": int(n_seeds),
+                    "n_molecules": len(mol_rows),
+                    "cov_r_mean": _mean([row["cov_r"] for row in mol_rows]),
+                    "cov_p_mean": _mean([row["cov_p"] for row in mol_rows]),
+                    "mat_r_mean": _mean([row["mat_r"] for row in mol_rows]),
+                    "mat_p_mean": _mean([row["mat_p"] for row in mol_rows]),
+                    "cov_r_median": _median([row["cov_r"] for row in mol_rows]),
+                    "cov_p_median": _median([row["cov_p"] for row in mol_rows]),
+                    "mat_r_median": _median([row["mat_r"] for row in mol_rows]),
+                    "mat_p_median": _median([row["mat_p"] for row in mol_rows]),
+                }
+            )
+    return per_molecule, summary
+
+
 def k_rows_for_method(
     matrices: dict[str, np.ndarray],
     k_values: list[int],
@@ -55,8 +158,24 @@ def k_rows_for_method(
     seed: int,
     threshold: float = 0.75,
     dmax: float = 3.0,
+    thresholds: Sequence[float] | None = None,
+    inclusive: bool = False,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Return seed-averaged per-molecule rows and molecule-mean summary rows."""
+    """Return seed-averaged per-molecule rows and molecule-mean summary rows.
+
+    Passing `thresholds` emits one row per K and cutoff, with MAT shared across
+    those cutoffs. The default single-threshold path keeps the `cov_*_075`
+    column names the existing druglike tables use.
+    """
+    if thresholds is not None:
+        return k_rows_at_thresholds(
+            matrices,
+            k_values,
+            thresholds,
+            n_seeds=n_seeds,
+            seed=seed,
+            inclusive=inclusive,
+        )
     per_molecule: list[dict[str, object]] = []
     summary: list[dict[str, object]] = []
     smiles_order = list(matrices)
@@ -69,7 +188,9 @@ def k_rows_for_method(
             for smiles in smiles_order:
                 rng = np.random.default_rng(stable_seed(seed, replicate, k, smiles))
                 sampled = subsample_columns(matrices[smiles], k, rng)
-                seed_metrics[smiles].append(per_molecule_metrics(sampled, threshold, dmax))
+                seed_metrics[smiles].append(
+                    per_molecule_metrics(sampled, threshold, dmax, inclusive=inclusive)
+                )
         mol_rows = []
         for smiles in smiles_order:
             replicates = seed_metrics[smiles]

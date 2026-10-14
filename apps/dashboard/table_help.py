@@ -449,6 +449,53 @@ TABLE_HELP: dict[str, dict[str, str | dict[str, str]]] = {
             "details": "Human-readable note.",
         },
     },
+    "plinder_clustering": {
+        "summary": (
+            "Greedy heavy-atom RMSD clustering of the full generated pool "
+            "(about 1,000 conformers), at 0.5 / 1.0 / 2.0 / 3.0 Å. "
+            "Values are means over the 23 molecules. PoseBusters pass rate is separate "
+            "and is not a filter on the clusters."
+        ),
+        "columns": {
+            "display_label": "Method name.",
+            "n_molecules": "Molecules with a generated pool.",
+            "mean_n_generated": "Mean generated conformers per molecule.",
+            "mean_pb_pass_rate": "Mean fraction of conformers that pass PoseBusters.",
+            "mean_clusters_0p5": "Mean greedy cluster count at 0.5 Å.",
+            "mean_clusters_1p0": "Mean greedy cluster count at 1.0 Å.",
+            "largest_cluster_fraction_1p0": "Mean fraction of the pool in the largest 1.0 Å cluster.",
+        },
+    },
+    "plinder_energy": {
+        "summary": (
+            "MMFF94s after stripping and rebuilding hydrogens, with no minimization, "
+            "on PoseBusters-passing conformers. Each column is the mean of the "
+            "per-molecule statistic. Molecules with no MMFF parameters are omitted "
+            "from that molecule's energy and stay blank."
+        ),
+        "columns": {
+            "energy_min": "Mean of per-molecule minimum energies.",
+            "energy_median": "Mean of per-molecule median energies.",
+            "energy_std": "Mean of per-molecule energy standard deviations.",
+            "energy_count": "Mean number of conformers with a finite energy.",
+        },
+    },
+    "plinder_recovery": {
+        "summary": (
+            "COV-R is the fraction of experimental references with a generated "
+            "conformer at RMSD ≤ the cutoff. COV-P is the fraction of generated "
+            "conformers within the cutoff of some reference. Both are averaged "
+            "equally across molecules. MAT-R and MAT-P are the mean nearest distances "
+            "and do not use a cutoff."
+        ),
+        "columns": {
+            "cov_r_0p5_mean": "Mean COV-R at 0.5 Å.",
+            "cov_r_0p75_mean": "Mean COV-R at 0.75 Å.",
+            "cov_r_1p0_mean": "Mean COV-R at 1.0 Å.",
+            "mat_r_mean": "Mean MAT-R (Å).",
+            "mat_p_mean": "Mean MAT-P (Å).",
+        },
+    },
 }
 
 

@@ -81,8 +81,26 @@ def finite_axis_min(matrix: np.ndarray, axis: int) -> np.ndarray:
     return values
 
 
+def coverage_fraction(values: np.ndarray, threshold: float, *, inclusive: bool = False) -> float:
+    """Fraction of nearest-neighbor distances within `threshold`.
+
+    The default is a strict `<`, matching the existing COV-R/COV-P tables.
+    `inclusive=True` uses `<=`, matching CASF Hit@threshold.
+    """
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        return float("nan")
+    hits = finite <= threshold if inclusive else finite < threshold
+    return float(np.mean(hits))
+
+
 def per_molecule_metrics(
-    matrix: np.ndarray, threshold: float, dmax: float
+    matrix: np.ndarray,
+    threshold: float,
+    dmax: float,
+    *,
+    inclusive: bool = False,
 ) -> dict[str, float | int]:
     valid = matrix[np.isfinite(matrix)]
     min_true = finite_axis_min(matrix, axis=1)
@@ -91,7 +109,7 @@ def per_molecule_metrics(
     finite_generated = min_generated[np.isfinite(min_generated)]
 
     def coverage(values: np.ndarray) -> float:
-        return float(np.mean(values < threshold)) if len(values) else float("nan")
+        return coverage_fraction(values, threshold, inclusive=inclusive)
 
     def matching(values: np.ndarray) -> float:
         return float(np.mean(values)) if len(values) else float("nan")
@@ -103,12 +121,18 @@ def per_molecule_metrics(
             censored[finite_mask] = np.minimum(values[finite_mask], dmax)
         return float(np.mean(censored)) if expected_size else float("nan")
 
+    cov_r = coverage(finite_true)
+    cov_p = coverage(finite_generated)
     return {
         "min_rmsd": float(valid.min()) if len(valid) else float("nan"),
         "max_rmsd": float(valid.max()) if len(valid) else float("nan"),
         "avg_rmsd": float(valid.mean()) if len(valid) else float("nan"),
-        "cov_r_075": coverage(finite_true),
-        "cov_p_075": coverage(finite_generated),
+        "cov_r": cov_r,
+        "cov_p": cov_p,
+        # Legacy names. The value is coverage at `threshold`, which the original
+        # callers always set to 0.75 Å.
+        "cov_r_075": cov_r,
+        "cov_p_075": cov_p,
         "mat_r": matching(finite_true),
         "mat_p": matching(finite_generated),
         "cmat_r": censored_matching(min_true, matrix.shape[0]),

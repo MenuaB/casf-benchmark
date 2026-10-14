@@ -52,7 +52,8 @@ release_data = _load_repo_release_data()
 
 render_table_help = _load_sibling_module("table_help").render_table_help
 render_report_analysis = _load_sibling_module("report_analysis_charts").render_report_analysis
-render_druglike_k_charts = _load_sibling_module("druglike_k_charts").render_druglike_k_charts
+druglike_k_charts = _load_sibling_module("druglike_k_charts")
+plinder_charts = _load_sibling_module("plinder_charts")
 render_threshold_charts = _load_sibling_module("threshold_charts").render_threshold_charts
 
 _DEFAULT_DB = DEFAULT_DASHBOARD_DB
@@ -412,67 +413,9 @@ EXTENDED_TABLES = {
     },
 }
 
-# Separate from Extended Analysis: one row per checkpoint/molecule, not the
-# ligand_set/tier/family stratification those filters target.
-DRUGLIKE_TABLES: dict[str, dict[str, object]] = {
-    "Druglike summary": {
-        "table": "extended_druglike_summary",
-        "columns": [
-            "label",
-            "display_label",
-            # Present once the table is rebuilt for a non-Qwen generator; harmless
-            # while absent, since display_table() keeps only the columns that exist.
-            "generator",
-            "model_size",
-            "tokenizer",
-            "recipe",
-            "step",
-            "n_molecules",
-            "total_confs",
-            "overall_pb_pass_rate",
-            "mean_per_molecule_pb_pass_rate",
-            "cov_r_mean",
-            "cov_r_median",
-            "cov_p_mean",
-            "cov_p_median",
-            "mat_r_mean",
-            "mat_r_median",
-            "mat_p_mean",
-            "mat_p_median",
-            "molecule_success_rate",
-            "total_true_confs",
-        ],
-    },
-    "Druglike per-molecule": {
-        "table": "extended_druglike_per_molecule",
-        "columns": [
-            "label",
-            "name",
-            "category",
-            "num_heavy_atoms",
-            "rotatable_bonds",
-            "mw",
-            "n_generated",
-            "n_pb_pass",
-            "pb_pass_rate",
-            "cov_r_075",
-            "cov_p_075",
-            "mat_r",
-            "mat_p",
-            "num_true_confs",
-            "div_mean_torsion_std_deg",
-            "div_greedy_clusters_1p0",
-            "div_cluster_entropy_1p0",
-            "energy_energy_median",
-        ],
-    },
-}
-
 TABLE_HEIGHT_PX = 520
-# Shorter than Extended Analysis so the druglike block sits on the first screen
-# instead of only its column headers peeking under the comparison grid.
 COMPARISON_TABLE_HEIGHT_PX = 320
-DRUGLIKE_TABLE_HEIGHT_PX = 420
+PLINDER_TABLE_HEIGHT_PX = 420
 
 # Serialises the release fetch: Streamlit may run several script threads at once
 # (a browser refresh mid-download is enough), and two of them writing the same
@@ -922,46 +865,228 @@ def _preferred_extended_db_path(extended_db_path: Path, required_tables: set[str
     return extended_db_path
 
 
-def render_druglike_tables(extended_db_path: Path) -> None:
-    st.divider()
-    st.header("Druglike conformer evaluation")
+PLINDER_VIEWS = {
+    "Clustering": (
+        "plinder_clustering",
+        [
+            "display_label",
+            "n_molecules",
+            "mean_n_generated",
+            "mean_pb_pass_rate",
+            "mean_clusters_0p5",
+            "mean_clusters_1p0",
+            "mean_clusters_2p0",
+            "mean_clusters_3p0",
+            "clusters_per_100_1p0",
+            "cluster_entropy_1p0",
+            "largest_cluster_fraction_1p0",
+            "singleton_fraction_1p0",
+        ],
+    ),
+    "Energy": (
+        "plinder_energy",
+        [
+            "display_label",
+            "n_molecules",
+            "mean_pb_pass_rate",
+            "energy_min",
+            "energy_median",
+            "energy_std",
+            "energy_max",
+            "energy_count",
+        ],
+    ),
+    "Recovery": (
+        "plinder_recovery",
+        [
+            "display_label",
+            "n_molecules",
+            "cov_r_0p5_mean",
+            "cov_p_0p5_mean",
+            "cov_r_0p75_mean",
+            "cov_p_0p75_mean",
+            "cov_r_1p0_mean",
+            "cov_p_1p0_mean",
+            "mat_r_mean",
+            "mat_p_mean",
+        ],
+    ),
+}
 
-    required = {spec["table"] for spec in DRUGLIKE_TABLES.values()}
-    extended_db_path = _preferred_extended_db_path(extended_db_path, required)
+
+def _plinder_chart_methods(summary: pd.DataFrame) -> list[str]:
+    labels = summary["label"].dropna().astype(str).tolist() if "label" in summary.columns else []
+    choices = plinder_charts.method_choices(labels)
+    present = set(choices)
+    default = [label for label in plinder_charts.MANUSCRIPT_LABELS if label in present]
+    if not default:
+        default = choices
+    names = {}
+    if "display_label" in summary.columns:
+        for row in summary[["label", "display_label"]].drop_duplicates().to_dict("records"):
+            names[str(row["label"])] = str(row["display_label"])
+    return st.sidebar.multiselect(
+        "Chart methods",
+        choices,
+        default=default,
+        format_func=lambda label: names.get(label, label),
+        key="plinder_chart_methods",
+        help="Tables list every scored method. Charts use this selection.",
+    )
+
+
+def render_plinder_panel(extended_db_path: Path) -> None:
+    st.header("PLINDER")
+    st.caption(
+        "23 molecules, one flat pool of about 1,000 generated conformers per method. "
+        "No sampling tiers. Clustering uses the full pool. Energy is MMFF94s after a "
+        "common hydrogen rebuild, on PoseBusters-passing conformers. Coverage uses "
+        "RMSD ≤ the cutoff."
+    )
     if not extended_db_path.exists():
-        st.info(f"Extended DB not found: {extended_db_path}")
+        st.info(f"Extended DB not found: {extended_db_path}. Run casf-analyze-plinder to publish the Plinder tables.")
         return
 
     extended_mtime_ns = extended_db_path.stat().st_mtime_ns
-    extended_table_names = load_table_names(str(extended_db_path), extended_mtime_ns)
-    available = [
-        label
-        for label, spec in DRUGLIKE_TABLES.items()
-        if spec["table"] in extended_table_names
-    ]
-    if not available:
-        st.info(f"No druglike tables found in {extended_db_path}")
+    table_names = load_table_names(str(extended_db_path), extended_mtime_ns)
+    required = {"plinder_summary", "plinder_per_molecule", "plinder_recovery_curve", "plinder_k_efficiency"}
+    if not required.issubset(table_names):
+        missing = ", ".join(sorted(required - table_names))
+        st.info(
+            f"Plinder tables are not in {extended_db_path} yet ({missing}). "
+            "Run casf-analyze-plinder to score the generation pools and publish them."
+        )
         return
 
-    tabs = st.tabs(available)
-    for tab, label in zip(tabs, available):
-        spec = DRUGLIKE_TABLES[label]
-        with tab:
-            frame = load_table(str(extended_db_path), spec["table"], extended_mtime_ns)
-            display_table(
-                frame,
-                spec["columns"],
-                spec["table"],
-                height=DRUGLIKE_TABLE_HEIGHT_PX,
-            )
+    summary = load_table(str(extended_db_path), "plinder_summary", extended_mtime_ns)
+    per_molecule = load_table(str(extended_db_path), "plinder_per_molecule", extended_mtime_ns)
+    recovery = load_table(str(extended_db_path), "plinder_recovery_curve", extended_mtime_ns)
+    k_frame = load_table(str(extended_db_path), "plinder_k_efficiency", extended_mtime_ns)
+    chart_methods = _plinder_chart_methods(summary)
 
-    if "extended_druglike_k_efficiency" in extended_table_names:
-        k_frame = load_table(
-            str(extended_db_path),
-            "extended_druglike_k_efficiency",
-            extended_mtime_ns,
+    view_label = st.radio(
+        "Table",
+        [*PLINDER_VIEWS, "Sample size"],
+        horizontal=True,
+        key="plinder_table",
+    )
+    if view_label == "Clustering":
+        _name, columns = PLINDER_VIEWS["Clustering"]
+        display_table(summary, columns, "plinder_clustering", height=PLINDER_TABLE_HEIGHT_PX)
+        with st.expander("Per molecule"):
+            display_table(
+                per_molecule,
+                [
+                    "display_label",
+                    "name",
+                    "n_generated",
+                    "n_pb_pass",
+                    "pb_pass_rate",
+                    "greedy_clusters_0p5",
+                    "greedy_clusters_1p0",
+                    "largest_cluster_fraction_1p0",
+                    "cluster_entropy_1p0",
+                ],
+                "plinder_clustering_molecules",
+                height=PLINDER_TABLE_HEIGHT_PX,
+            )
+    elif view_label == "Energy":
+        _name, columns = PLINDER_VIEWS["Energy"]
+        display_table(summary, columns, "plinder_energy", height=PLINDER_TABLE_HEIGHT_PX)
+        st.caption("Energy columns are means of the per-molecule statistics. Bortezomib stays blank when MMFF has no parameters.")
+        with st.expander("Per molecule"):
+            display_table(
+                per_molecule,
+                [
+                    "display_label",
+                    "name",
+                    "n_pb_pass",
+                    "energy_count",
+                    "energy_min",
+                    "energy_median",
+                    "energy_std",
+                    "energy_max",
+                ],
+                "plinder_energy_molecules",
+                height=PLINDER_TABLE_HEIGHT_PX,
+            )
+    elif view_label == "Recovery":
+        _name, columns = PLINDER_VIEWS["Recovery"]
+        display_table(summary, columns, "plinder_recovery", height=PLINDER_TABLE_HEIGHT_PX)
+        plotted = plinder_charts.with_plot_labels(recovery, chart_methods)
+        if plotted.empty:
+            st.info("Select at least one method to draw the recovery curve.")
+        else:
+            st.altair_chart(plinder_charts.recovery_chart(plotted), use_container_width=True)
+            st.caption("Solid and dashed lines are COV-R and COV-P. The curve stops at 1.0 Å. The table is the 0.5, 0.75, and 1.0 Å cutoffs.")
+    else:
+        threshold = st.radio(
+            "Coverage threshold (Å)",
+            plinder_charts.HEADLINE_THRESHOLDS,
+            horizontal=True,
+            key="plinder_k_threshold",
+            format_func=lambda value: f"{value:g}",
         )
-        render_druglike_k_charts(k_frame)
+        coverage = plinder_charts.coverage_at_threshold(k_frame, float(threshold))
+        plotted = plinder_charts.with_plot_labels(coverage, chart_methods)
+        if plotted.empty:
+            st.info("Select at least one method to draw the sample-size curves.")
+        else:
+            st.subheader("Coverage vs sample size")
+            st.caption(
+                f"COV-R and COV-P at {float(threshold):g} Å. "
+                "K is a random subsample of the full pool, averaged over 3 seeds."
+            )
+            left, right = st.columns(2)
+            with left:
+                st.altair_chart(
+                    druglike_k_charts.k_chart(
+                        plotted,
+                        recall_col="cov_r_mean",
+                        precision_col="cov_p_mean",
+                        ylabel="Coverage (mean over molecules)",
+                        title=f"Coverage vs K at {float(threshold):g} Å (mean)",
+                    ),
+                    use_container_width=True,
+                )
+            with right:
+                st.altair_chart(
+                    druglike_k_charts.k_chart(
+                        plotted,
+                        recall_col="cov_r_median",
+                        precision_col="cov_p_median",
+                        ylabel="Coverage (median over molecules)",
+                        title=f"Coverage vs K at {float(threshold):g} Å (median)",
+                    ),
+                    use_container_width=True,
+                )
+            matching = plinder_charts.coverage_at_threshold(k_frame, plinder_charts.HEADLINE_THRESHOLDS[0])
+            matching = plinder_charts.with_plot_labels(matching, chart_methods)
+            st.subheader("Matching vs sample size")
+            st.caption("MAT-R and MAT-P do not use an RMSD cutoff. The same curves are shown at every coverage threshold.")
+            left, right = st.columns(2)
+            with left:
+                st.altair_chart(
+                    druglike_k_charts.k_chart(
+                        matching,
+                        recall_col="mat_r_mean",
+                        precision_col="mat_p_mean",
+                        ylabel="Matching RMSD (Å, mean over molecules)",
+                        title="Matching vs K (mean)",
+                    ),
+                    use_container_width=True,
+                )
+            with right:
+                st.altair_chart(
+                    druglike_k_charts.k_chart(
+                        matching,
+                        recall_col="mat_r_median",
+                        precision_col="mat_p_median",
+                        ylabel="Matching RMSD (Å, median over molecules)",
+                        title="Matching vs K (median)",
+                    ),
+                    use_container_width=True,
+                )
 
 
 def render_extended_analysis(extended_db_path: Path) -> None:
@@ -1043,8 +1168,21 @@ def main() -> None:
     comparison_strata = drop_hidden_core_rows(load_table(str(db_path), "comparison_strata", db_mtime_ns))
     per_ligand = drop_hidden_core_rows(load_table(str(db_path), "per_ligand_long", db_mtime_ns))
 
-    ligand_sets = sorted(comparison_rows["ligand_set"].dropna().astype(str).unique())
-    ligand_set = st.sidebar.selectbox("Ligand set", ligand_sets, index=0 if "core" not in ligand_sets else ligand_sets.index("core"))
+    present_sets = sorted(comparison_rows["ligand_set"].dropna().astype(str).unique())
+    ligand_sets = [name for name in ("core", "ref") if name in present_sets]
+    ligand_sets.extend(name for name in present_sets if name not in ligand_sets)
+    if "plinder" not in ligand_sets:
+        ligand_sets.append("plinder")
+    ligand_set = st.sidebar.selectbox(
+        "Ligand set",
+        ligand_sets,
+        index=0 if "core" not in ligand_sets else ligand_sets.index("core"),
+    )
+    if ligand_set == "plinder":
+        extended_db_path = sidebar_extended_db_path(db_path, table_names)
+        render_plinder_panel(extended_db_path)
+        return
+
     tier = st.sidebar.selectbox("Tier", ["All", *TIERS], index=0)
     family_source = comparison_rows[comparison_rows["ligand_set"].astype(str) == ligand_set]
     families = ["All", *sorted(family_source["family"].dropna().astype(str).unique())]
@@ -1181,7 +1319,6 @@ def main() -> None:
         family=family,
     )
     extended_db_path = sidebar_extended_db_path(db_path, table_names)
-    render_druglike_tables(extended_db_path)
     render_report_analysis(
         per_ligand,
         ligand_set=ligand_set,

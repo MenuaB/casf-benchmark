@@ -271,10 +271,12 @@ def test_report_section_is_immediately_before_extended_analysis() -> None:
     source = (
         REPO_ROOT / "apps" / "dashboard" / "streamlit_app.py"
     ).read_text(encoding="utf-8")
-    druglike = source.rindex("    render_druglike_tables(extended_db_path)")
-    report = source.rindex("    render_report_analysis(")
-    extended = source.rindex("    render_extended_analysis(extended_db_path)")
-    assert druglike < report < extended
+    main = source.split("def main()", 1)[1]
+    report = main.rindex("    render_report_analysis(")
+    extended = main.rindex("    render_extended_analysis(extended_db_path)")
+    assert report < extended
+    assert "render_druglike_tables(" not in main
+    assert 'if ligand_set == "plinder":' in main
 
 
 def test_dashboard_renders_all_six_reference_report_figures() -> None:
