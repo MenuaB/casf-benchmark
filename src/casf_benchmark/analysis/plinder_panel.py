@@ -24,7 +24,7 @@ from casf_benchmark.analysis.druglike_covmat import (
     load_rmsd_matrices,
     save_rmsd_matrices,
 )
-from casf_benchmark.analysis.metrics import greedy_cluster_metrics, threshold_tag
+from casf_benchmark.analysis.metrics import greedy_cluster_metrics, mol_no_h, threshold_tag
 
 HEADLINE_THRESHOLDS = (0.5, 0.75, 1.0)
 RECOVERY_STOP = 1.0
@@ -208,11 +208,28 @@ def _empty_coverage() -> dict[str, float]:
     return row
 
 
+def heavy_atom_conformers(mols: list) -> list[Chem.Mol]:
+    """Drop explicit hydrogens so every pool matches the heavy-atom reference.
+
+    FlowR writes explicit hydrogens. PoseBusters copies a generated conformer
+    onto the SMILES reference, and that copy fails when the atom counts differ.
+    """
+    heavy: list[Chem.Mol] = []
+    for mol in mols:
+        if mol is None or mol.GetNumConformers() == 0:
+            continue
+        stripped = mol_no_h(mol)
+        if stripped is None or stripped.GetNumConformers() == 0:
+            continue
+        heavy.append(stripped)
+    return heavy
+
+
 def score_conformer_pool(task: tuple[str, list, str]) -> dict[str, object]:
     """Cluster the full pool, then PoseBusters-filter it for the energy stats."""
     smiles, mols, name = task
     RDLogger.DisableLog("rdApp.*")
-    generated = [mol for mol in mols if mol is not None and mol.GetNumConformers() > 0]
+    generated = heavy_atom_conformers(mols)
     n_generated = len(generated)
     clusters = greedy_cluster_metrics(generated)
     if n_generated == 0:

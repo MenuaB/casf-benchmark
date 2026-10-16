@@ -54,6 +54,7 @@ LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-druglike-ots-v1",
         "dashboard-data-druglike-ots-v2",
         "dashboard-data-druglike-k-v1",
+        "dashboard-data-druglike-baselines-v1",
     }
 )
 

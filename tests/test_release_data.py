@@ -72,6 +72,7 @@ def test_a_formerly_pinned_default_now_falls_back_to_latest(monkeypatch: pytest.
         "dashboard-data-druglike-ots-v1",
         "dashboard-data-druglike-ots-v2",
         "dashboard-data-druglike-k-v1",
+        "dashboard-data-druglike-baselines-v1",
     ):
         monkeypatch.setenv("CASF_DASHBOARD_RELEASE", tag)
         assert release_data.release_tag() == release_data.LATEST_TAG

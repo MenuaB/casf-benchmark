@@ -435,14 +435,17 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-druglike-ots-v1",
         "dashboard-data-druglike-ots-v2",
         "dashboard-data-druglike-k-v1",
+        "dashboard-data-druglike-baselines-v1",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-druglike-baselines-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-plinder-v1"
 
 
 def effective_release_tag() -> str:
     tag = release_data.release_tag()
-    if tag in _LEGACY_RELEASE_TAGS:
+    # "latest" is a string, not release_data.LATEST_TAG: an older installed
+    # package on Community Cloud has no such attribute and crashed on it.
+    if tag == "latest" or tag in _LEGACY_RELEASE_TAGS:
         return _FORCED_RELEASE_TAG
     return tag
 

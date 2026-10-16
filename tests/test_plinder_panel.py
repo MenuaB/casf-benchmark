@@ -21,6 +21,7 @@ from casf_benchmark.analysis.plinder_panel import (
     publish_plinder_tables,
     recovery_curve,
     recovery_thresholds,
+    score_conformer_pool,
     summarize_molecules,
     write_method_outputs,
 )
@@ -104,6 +105,15 @@ def _embedded(smiles: str) -> Chem.Mol:
     mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
     assert AllChem.EmbedMolecule(mol, randomSeed=1) == 0
     return mol
+
+
+def test_explicit_hydrogens_still_pass_posebusters() -> None:
+    ethanol = _embedded("CCO")
+    assert ethanol.GetNumAtoms() > Chem.RemoveHs(ethanol).GetNumAtoms()
+    row = score_conformer_pool(("CCO", [ethanol], "ethanol"))
+    assert row["n_generated"] == 1
+    assert row["n_pb_pass"] == 1
+    assert math.isfinite(row["energy_min"])
 
 
 def test_common_hydrogen_energy_scores_ethanol_and_skips_boron() -> None:
