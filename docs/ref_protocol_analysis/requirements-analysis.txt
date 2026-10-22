@@ -1,0 +1,8 @@
+# Python 3.10; RDKit matches the archived core calculation.
+rdkit==2025.9.6
+numpy==2.2.6
+pandas==2.3.3
+scipy==1.15.3
+zarr==2.18.3
+numcodecs==0.13.1
+posebusters==0.6.5

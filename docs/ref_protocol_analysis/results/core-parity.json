@@ -1,0 +1,25 @@
+{
+  "energy_checks": [
+    {
+      "method": "rdkit_random_minimized",
+      "absolute_energy_difference": 0.0
+    },
+    {
+      "method": "torsion_raw",
+      "absolute_energy_difference": 0.0
+    },
+    {
+      "method": "loqi_raw",
+      "absolute_energy_difference": 0.0
+    },
+    {
+      "method": "nextmol_dmt_l_raw",
+      "absolute_energy_difference": 0.0
+    },
+    {
+      "method": "qwen_1p7b_fsq_bigdata_step47023",
+      "absolute_energy_difference": 0.0
+    }
+  ],
+  "sampling_all_methods_all_budgets": "matches core archive within 1e-14"
+}

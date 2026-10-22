@@ -1,0 +1,11 @@
+{
+  "n_generated_conformers": 754166,
+  "n_failed": 1,
+  "examples": [
+    [
+      "flowr_raw_chembl_count",
+      "2qm9_2qm9_conf0",
+      "nonfinite_energy"
+    ]
+  ]
+}

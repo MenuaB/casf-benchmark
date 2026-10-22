@@ -52,6 +52,7 @@ release_data = _load_repo_release_data()
 
 render_table_help = _load_sibling_module("table_help").render_table_help
 render_report_analysis = _load_sibling_module("report_analysis_charts").render_report_analysis
+paper_protocol_charts = _load_sibling_module("paper_protocol_charts")
 druglike_k_charts = _load_sibling_module("druglike_k_charts")
 plinder_charts = _load_sibling_module("plinder_charts")
 render_threshold_charts = _load_sibling_module("threshold_charts").render_threshold_charts
@@ -436,9 +437,10 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-druglike-ots-v2",
         "dashboard-data-druglike-k-v1",
         "dashboard-data-druglike-baselines-v1",
+        "dashboard-data-plinder-v1",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-plinder-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-ref-protocol-v1"
 
 
 def effective_release_tag() -> str:
@@ -1294,7 +1296,17 @@ def main() -> None:
             ],
         ),
     }
+    main_views["Sampling curves"] = ("paper_sampling", [])
     table_label = st.radio("Table", list(main_views), horizontal=True, key="main_table")
+    if table_label == "Sampling curves":
+        paper_protocol_charts.render_sampling(db_path, ligand_set)
+        return
+    if table_label == "Energy":
+        energy_source = st.radio("Energy protocol", ["Common protocol (paper)", "Archived energies"], horizontal=True)
+        if energy_source == "Common protocol (paper)":
+            paper_protocol_charts.render_energy(db_path, ligand_set)
+            return
+        st.caption("Archived energies use the original hydrogen handling and may reuse stored minimization energies. They are separate from the paper’s common-hydrogen MMFF94s results.")
     table_name, table_columns = main_views[table_label]
     table_frame = view
     if table_name == "energy":

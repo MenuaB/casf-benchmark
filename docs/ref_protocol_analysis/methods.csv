@@ -1,0 +1,12 @@
+method,display_label
+rdkit_random_minimized_chembl_count,RDKit minimized
+torsion_minimized_chembl_count,Torsion minimized
+loqi_raw_chembl_count,LoQI
+mcf_drugs_l_raw_chembl_count,MCF drugs-L
+nextmol_dmt_l_raw_chembl_count,NExT-Mol DMT-L
+rdkit_random_raw_chembl_count,RDKit raw
+torsional_diffusion_raw_chembl_count,Torsional Diffusion
+flowr_raw_chembl_count,FlowR
+torsion_raw_chembl_count,Torsion raw
+qwen_1p7b_fsq_bigdata_step47023_chembl_count,Qwen 1.7B FSQ
+chembl3d_gt_pb,ChEMBL3D-PB

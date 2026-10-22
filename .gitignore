@@ -30,3 +30,6 @@ data/results/*.sqlite.part
 # when the extended k-efficiency pass runs against bundled run roots that ship
 # analysis tables without the SDFs. ~10k rows of absolute Weka paths.
 data/results/tables/extended_k_efficiency_failures.csv
+
+# Reproducible common-protocol working data; published as release assets.
+data/results/ref_protocol/

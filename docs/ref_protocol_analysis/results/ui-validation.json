@@ -1,0 +1,9 @@
+{
+  "core_energy": true,
+  "ref_energy": true,
+  "ref_sampling": true,
+  "bootstrap_bands": true,
+  "ref_energy_conformers": 835972,
+  "failed_energies": 1,
+  "available_sampling_methods": 10
+}

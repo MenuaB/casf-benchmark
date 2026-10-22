@@ -1057,6 +1057,7 @@ def render_report_analysis(
 
     st.divider()
     st.header("Per-ligand conformer report")
+    st.caption("Energy plots in this report retain the archived energy protocol. For comparable rebuilt-hydrogen MMFF94s results, choose Energy → Common protocol (paper) above.")
     st.caption(
         "Energy, diversity, and bound-pose recovery computed from every available "
         "per-ligand row. All-method summaries use the complete selected tier; "
