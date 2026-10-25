@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Score PLINDER-23 generation pools and publish the dashboard tables.
+"""Score PLINDER generation pools and publish the dashboard tables.
 
-Reads druglike cohorts from generation_runs.yaml. A catalog entry with no
-generation_results.pickle is skipped. Completed method directories under the
-output root are reused unless --force is set, and the SQLite tables are rebuilt
-from every completed method so a one-label rerun does not drop the others.
+Reads druglike cohorts from generation_runs.yaml. The reference set is the
+cleaned per-molecule SDF directory. A catalog entry with no
+generation_results.pickle is skipped. Clustering, PoseBusters, and energy are
+reused from a completed method directory when every current reference molecule
+is already scored, unless --force is set. Coverage, the recovery curve, and
+the K curves are always written from the RMSD cache for this reference set.
+The SQLite tables are rebuilt from every completed method so a one-label rerun
+does not drop the others.
 """
 
 from __future__ import annotations
@@ -28,8 +32,10 @@ from casf_benchmark.analysis.plinder_panel import (
     _empty_coverage,
     headline_coverage,
     load_panel_frames,
+    DEFAULT_REFERENCE_DIR,
+    load_reference_sdf_dir,
     method_dir,
-    method_outputs_complete,
+    pool_frame_for_reference,
     publish_plinder_tables,
     recovery_curve,
     recovery_thresholds,
@@ -41,8 +47,7 @@ from casf_benchmark.catalog import describe_run, load_generation_run_entries
 from casf_benchmark.paths import DEFAULT_EXTENDED_DB, RESULTS_ROOT
 
 DEFAULT_GENERATION_RESULTS_ROOT = Path("/mnt/weka/vtarasov/outputs/outputs/gen_results")
-DEFAULT_DRUGLIKE_PICKLE = Path("/mnt/weka/vtarasov/druglike_smi.pickle")
-DEFAULT_CACHE_DIR = RESULTS_ROOT / "cache" / "druglike_rmsd_matrices"
+DEFAULT_CACHE_DIR = RESULTS_ROOT / "cache" / "plinder_rmsd_matrices"
 DEFAULT_OUTPUT_DIR = RESULTS_ROOT / "plinder_panel"
 
 
@@ -66,7 +71,18 @@ def first_name(row: object) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ground-truth-pickle", type=Path, default=DEFAULT_DRUGLIKE_PICKLE)
+    parser.add_argument(
+        "--ground-truth-dir",
+        type=Path,
+        default=DEFAULT_REFERENCE_DIR,
+        help="Directory of one cleaned SDF per molecule",
+    )
+    parser.add_argument(
+        "--ground-truth-pickle",
+        type=Path,
+        default=None,
+        help="Optional {smiles: {confs, names}} pickle. Overrides --ground-truth-dir",
+    )
     parser.add_argument("--generation-results-root", type=Path, default=DEFAULT_GENERATION_RESULTS_ROOT)
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -158,10 +174,6 @@ def score_label(
     force: bool,
 ) -> None:
     destination = method_dir(output_dir, label)
-    if method_outputs_complete(destination) and not force:
-        print(f"{label}: reusing {destination}", flush=True)
-        return
-
     matrices = cached_rmsd_matrices(
         label=label,
         gen_pickle=gen_pickle,
@@ -169,14 +181,20 @@ def score_label(
         cache_dir=cache_dir,
         workers=num_workers,
     )
-    with gen_pickle.open("rb") as handle:
-        generated = pickle.load(handle)
-    per_molecule = score_pools(
-        label,
-        generated,
-        ground_truth,
-        molecule_workers=molecule_workers,
-    )
+    existing = destination / "per_molecule.csv"
+    reused = None if force or not existing.is_file() else pool_frame_for_reference(pd.read_csv(existing), ground_truth)
+    if reused is not None:
+        print(f"{label}: reusing pool metrics for {len(reused)} molecules from {destination}", flush=True)
+        per_molecule = reused
+    else:
+        with gen_pickle.open("rb") as handle:
+            generated = pickle.load(handle)
+        per_molecule = score_pools(
+            label,
+            generated,
+            ground_truth,
+            molecule_workers=molecule_workers,
+        )
     per_molecule = attach_coverage(per_molecule, matrices)
     summary = pd.DataFrame([{**{"label": label}, **descriptors, **summarize_molecules(per_molecule)}])
     per_molecule = _with_descriptors(per_molecule, label, descriptors)
@@ -206,8 +224,12 @@ def main() -> None:
     args = build_parser().parse_args()
     RDLogger.DisableLog("rdApp.*")
     wanted = selected_labels(args.labels)
-    with args.ground_truth_pickle.open("rb") as handle:
-        ground_truth = pickle.load(handle)
+    if args.ground_truth_pickle is not None:
+        with args.ground_truth_pickle.open("rb") as handle:
+            ground_truth = pickle.load(handle)
+    else:
+        ground_truth = load_reference_sdf_dir(args.ground_truth_dir)
+    print(f"Reference molecules: {len(ground_truth)}", flush=True)
 
     skipped: list[str] = []
     for entry in load_generation_run_entries():

@@ -17,14 +17,17 @@ def load_dashboard() -> ModuleType:
     return module
 
 
-def test_stale_release_pin_follows_the_ref_protocol_release(monkeypatch) -> None:
+def test_stale_release_pin_follows_the_plinder22_release(monkeypatch) -> None:
     dashboard = load_dashboard()
-    monkeypatch.setattr(dashboard.release_data, "release_tag", lambda: "dashboard-data-druglike-baselines-v1")
-    assert dashboard.effective_release_tag() == "dashboard-data-ref-protocol-v1"
-    monkeypatch.setattr(dashboard.release_data, "release_tag", lambda: "dashboard-data-plinder-v1")
-    assert dashboard.effective_release_tag() == "dashboard-data-ref-protocol-v1"
-    monkeypatch.setattr(dashboard.release_data, "release_tag", lambda: "latest")
-    assert dashboard.effective_release_tag() == "dashboard-data-ref-protocol-v1"
+    for tag in (
+        "dashboard-data-druglike-baselines-v1",
+        "dashboard-data-plinder-v1",
+        "dashboard-data-ref-protocol-v1",
+        "dashboard-data-druglike-minimized-v1",
+        "latest",
+    ):
+        monkeypatch.setattr(dashboard.release_data, "release_tag", lambda tag=tag: tag)
+        assert dashboard.effective_release_tag() == "dashboard-data-plinder-v2"
 
 
 def test_public_qwen_allowlist_preserves_non_qwen_rows() -> None:

@@ -438,9 +438,11 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-druglike-k-v1",
         "dashboard-data-druglike-baselines-v1",
         "dashboard-data-plinder-v1",
+        "dashboard-data-ref-protocol-v1",
+        "dashboard-data-druglike-minimized-v1",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-ref-protocol-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-plinder-v2"
 
 
 def effective_release_tag() -> str:
@@ -942,12 +944,6 @@ def _plinder_chart_methods(summary: pd.DataFrame) -> list[str]:
 
 def render_plinder_panel(extended_db_path: Path) -> None:
     st.header("PLINDER")
-    st.caption(
-        "23 molecules, one flat pool of about 1,000 generated conformers per method. "
-        "No sampling tiers. Clustering uses the full pool. Energy is MMFF94s after a "
-        "common hydrogen rebuild, on PoseBusters-passing conformers. Coverage uses "
-        "RMSD ≤ the cutoff."
-    )
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}. Run casf-analyze-plinder to publish the Plinder tables.")
         return
@@ -967,11 +963,18 @@ def render_plinder_panel(extended_db_path: Path) -> None:
     per_molecule = load_table(str(extended_db_path), "plinder_per_molecule", extended_mtime_ns)
     recovery = load_table(str(extended_db_path), "plinder_recovery_curve", extended_mtime_ns)
     k_frame = load_table(str(extended_db_path), "plinder_k_efficiency", extended_mtime_ns)
+    n_molecules = int(summary["n_molecules"].iloc[0]) if "n_molecules" in summary.columns and not summary.empty else 0
+    st.caption(
+        f"{n_molecules} molecules, one flat pool of about 1,000 generated conformers per method. "
+        "No sampling tiers. Clustering uses the full pool. Energy is MMFF94s after a "
+        "common hydrogen rebuild, on PoseBusters-passing conformers. Coverage uses "
+        "RMSD ≤ the cutoff."
+    )
     chart_methods = _plinder_chart_methods(summary)
 
     view_label = st.radio(
         "Table",
-        [*PLINDER_VIEWS, "Sample size"],
+        [*PLINDER_VIEWS, "Sample size", "Druglike"],
         horizontal=True,
         key="plinder_table",
     )
@@ -1024,7 +1027,7 @@ def render_plinder_panel(extended_db_path: Path) -> None:
         else:
             st.altair_chart(plinder_charts.recovery_chart(plotted), use_container_width=True)
             st.caption("Solid and dashed lines are COV-R and COV-P. The curve stops at 1.0 Å. The table is the 0.5, 0.75, and 1.0 Å cutoffs.")
-    else:
+    elif view_label == "Sample size":
         threshold = st.radio(
             "Coverage threshold (Å)",
             plinder_charts.HEADLINE_THRESHOLDS,
@@ -1091,6 +1094,65 @@ def render_plinder_panel(extended_db_path: Path) -> None:
                         title="Matching vs K (median)",
                     ),
                     use_container_width=True,
+                )
+    elif view_label == "Druglike":
+        if "extended_druglike_summary" not in table_names:
+            st.info(
+                "The druglike table is not in this extended DB. "
+                "It is extended_druglike_summary, scored on the cleaned reference set."
+            )
+            return
+        druglike = load_table(str(extended_db_path), "extended_druglike_summary", extended_mtime_ns)
+        n_druglike = int(druglike["n_molecules"].iloc[0]) if "n_molecules" in druglike.columns and not druglike.empty else 0
+        st.caption(
+            f"{n_druglike} molecules. PoseBusters on the full pool, diversity on a 200-conformer sample, "
+            "and COV/MAT at RMSD < 0.75 Å."
+        )
+        display_table(
+            druglike,
+            [
+                "display_label",
+                "generator",
+                "n_molecules",
+                "total_confs",
+                "overall_pb_pass_rate",
+                "mean_per_molecule_pb_pass_rate",
+                "cov_r_mean",
+                "cov_r_median",
+                "cov_p_mean",
+                "cov_p_median",
+                "mat_r_mean",
+                "mat_r_median",
+                "mat_p_mean",
+                "mat_p_median",
+                "molecule_success_rate",
+                "total_true_confs",
+            ],
+            "plinder_druglike",
+            height=PLINDER_TABLE_HEIGHT_PX,
+        )
+        if "extended_druglike_per_molecule" in table_names:
+            molecules = load_table(str(extended_db_path), "extended_druglike_per_molecule", extended_mtime_ns)
+            with st.expander("Per molecule"):
+                display_table(
+                    molecules,
+                    [
+                        "display_label",
+                        "name",
+                        "n_generated",
+                        "n_pb_pass",
+                        "pb_pass_rate",
+                        "cov_r_075",
+                        "cov_p_075",
+                        "mat_r",
+                        "mat_p",
+                        "num_true_confs",
+                        "div_greedy_clusters_1p0",
+                        "div_cluster_entropy_1p0",
+                        "energy_energy_median",
+                    ],
+                    "plinder_druglike_molecules",
+                    height=PLINDER_TABLE_HEIGHT_PX,
                 )
 
 

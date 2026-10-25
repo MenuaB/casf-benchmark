@@ -18,6 +18,8 @@ from casf_benchmark.analysis.plinder_panel import (
     common_hydrogen_mmff_energy,
     headline_coverage,
     load_panel_frames,
+    load_reference_sdf_dir,
+    pool_frame_for_reference,
     publish_plinder_tables,
     recovery_curve,
     recovery_thresholds,
@@ -105,6 +107,60 @@ def _embedded(smiles: str) -> Chem.Mol:
     mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
     assert AllChem.EmbedMolecule(mol, randomSeed=1) == 0
     return mol
+
+
+def _write_reference_sdf(path: Path, mols: list[Chem.Mol], name: str, ccd: str) -> None:
+    writer = Chem.SDWriter(str(path))
+    try:
+        for mol in mols:
+            record = Chem.Mol(mol)
+            record.SetProp("molecule_name", name)
+            record.SetProp("ccd", ccd)
+            writer.write(record)
+    finally:
+        writer.close()
+
+
+def test_reference_sdf_dir_keys_heavy_atom_smiles(tmp_path: Path) -> None:
+    ethanol = Chem.RemoveHs(_embedded("CCO"))
+    shifted = Chem.Mol(ethanol)
+    conformer = Chem.Conformer(shifted.GetConformer())
+    position = conformer.GetAtomPosition(0)
+    conformer.SetAtomPosition(0, (position.x + 0.2, position.y, position.z))
+    shifted.RemoveAllConformers()
+    shifted.AddConformer(conformer, assignId=True)
+    methane = Chem.RemoveHs(_embedded("C"))
+    _write_reference_sdf(tmp_path / "NCT.sdf", [ethanol, shifted], "Nicotine", "NCT")
+    _write_reference_sdf(tmp_path / "FOM.sdf", [methane], "Fosmidomycin", "FOM")
+
+    loaded = load_reference_sdf_dir(tmp_path)
+
+    assert [row["names"][0] for row in loaded.values()] == ["Fosmidomycin", "Nicotine"]
+    nicotine = next(row for row in loaded.values() if row["ccd"] == "NCT")
+    assert len(nicotine["confs"]) == 2
+    assert Chem.MolToSmiles(Chem.MolFromSmiles("CCO")) in loaded
+
+
+def test_pool_frame_keeps_only_reference_molecules() -> None:
+    frame = pd.DataFrame(
+        {
+            "smiles": ["CCO", "B"],
+            "name": ["ethanol", "boron"],
+            "n_generated": [10, 10],
+            "greedy_clusters_1p0": [2, 3],
+            "cov_r_0p5": [0.1, 0.2],
+            "mat_r": [0.4, 0.5],
+            "label": ["x", "x"],
+        }
+    )
+    kept = pool_frame_for_reference(frame, {"CCO": {"names": ["ethanol"]}})
+    assert kept is not None
+    assert kept["smiles"].tolist() == ["CCO"]
+    assert "cov_r_0p5" not in kept.columns
+    assert "mat_r" not in kept.columns
+    assert "label" not in kept.columns
+    assert kept.loc[0, "greedy_clusters_1p0"] == 2
+    assert pool_frame_for_reference(frame, {"CCC": {}}) is None
 
 
 def test_explicit_hydrogens_still_pass_posebusters() -> None:

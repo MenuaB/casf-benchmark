@@ -453,7 +453,7 @@ TABLE_HELP: dict[str, dict[str, str | dict[str, str]]] = {
         "summary": (
             "Greedy heavy-atom RMSD clustering of the full generated pool "
             "(about 1,000 conformers), at 0.5 / 1.0 / 2.0 / 3.0 Å. "
-            "Values are means over the 23 molecules. PoseBusters pass rate is separate "
+            "Values are equal-weight means over the reference molecules. PoseBusters pass rate is separate "
             "and is not a filter on the clusters."
         ),
         "columns": {
@@ -478,6 +478,23 @@ TABLE_HELP: dict[str, dict[str, str | dict[str, str]]] = {
             "energy_median": "Mean of per-molecule median energies.",
             "energy_std": "Mean of per-molecule energy standard deviations.",
             "energy_count": "Mean number of conformers with a finite energy.",
+        },
+    },
+    "plinder_druglike": {
+        "summary": (
+            "Druglike evaluation on the cleaned reference set. PoseBusters uses the "
+            "full generated pool. Diversity is a 200-conformer sample. COV-R, COV-P, "
+            "MAT-R, and MAT-P use RMSD < 0.75 Å for coverage and no cutoff for matching."
+        ),
+        "columns": {
+            "display_label": "Method name.",
+            "n_molecules": "Molecules in the cleaned reference set.",
+            "overall_pb_pass_rate": "Pooled fraction of conformers that pass PoseBusters.",
+            "cov_r_mean": "Mean COV-R at RMSD < 0.75 Å.",
+            "cov_p_mean": "Mean COV-P at RMSD < 0.75 Å.",
+            "mat_r_mean": "Mean MAT-R (Å).",
+            "mat_p_mean": "Mean MAT-P (Å).",
+            "total_true_confs": "Experimental reference conformers after dedup.",
         },
     },
     "plinder_recovery": {

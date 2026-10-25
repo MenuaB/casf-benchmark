@@ -1,4 +1,4 @@
-"""PLINDER-23 panel metrics for the dashboard.
+"""PLINDER panel metrics for the dashboard.
 
 Full-pool greedy clustering, common-hydrogen MMFF94s on the PoseBusters-passing
 subset, and inclusive COV-R/COV-P at the headline cutoffs. RMSD matrices are
@@ -62,6 +62,16 @@ SUMMARY_MEAN_COLUMNS = (
 )
 
 METHOD_FILES = ("summary.csv", "per_molecule.csv", "recovery.csv", "k_efficiency.csv")
+DEFAULT_REFERENCE_DIR = Path(
+    "/mnt/weka/mbedrosian/data/plinder/cleaned/split_by_molecule_dedup_0.05_anchor_triplet"
+)
+
+# Columns produced from the reference×generated RMSD matrix. A new reference
+# set replaces these; clustering, PoseBusters, and energy stay with the pool.
+_REFERENCE_COLUMNS = frozenset({"mat_r", "mat_p", "num_true_confs", "num_gen_confs"})
+_DESCRIPTOR_COLUMNS = frozenset(
+    {"label", "generator", "display_label", "model_size", "tokenizer", "recipe", "step"}
+)
 PLINDER_TABLES = (
     "plinder_summary",
     "plinder_per_molecule",
@@ -206,6 +216,68 @@ def _empty_coverage() -> dict[str, float]:
         row[f"cov_r_{tag}"] = math.nan
         row[f"cov_p_{tag}"] = math.nan
     return row
+
+
+def reference_smiles(mol: Chem.Mol) -> str:
+    """Isomeric heavy-atom SMILES used as the generation-pickle key."""
+    return Chem.MolToSmiles(Chem.RemoveHs(mol))
+
+
+def load_reference_sdf_dir(path: Path) -> dict[str, dict]:
+    """Load one cleaned SDF per molecule into the ground-truth dict.
+
+    Each file is a deduplicated set of experimental conformers for one CCD
+    code. Records carry ``molecule_name``. The dict key is the heavy-atom
+    SMILES so it joins the generation pickles. Molecules are ordered by name.
+    """
+    sdf_paths = sorted(Path(path).glob("*.sdf"))
+    if not sdf_paths:
+        raise FileNotFoundError(f"No SDF files in {path}")
+    parsed: list[tuple[str, str, dict]] = []
+    for sdf_path in sdf_paths:
+        supplier = Chem.SDMolSupplier(str(sdf_path), removeHs=False, sanitize=True)
+        mols = [mol for mol in supplier if mol is not None and mol.GetNumConformers() > 0]
+        if not mols:
+            raise ValueError(f"{sdf_path} has no readable conformers")
+        name = mols[0].GetProp("molecule_name") if mols[0].HasProp("molecule_name") else sdf_path.stem
+        ccd = mols[0].GetProp("ccd") if mols[0].HasProp("ccd") else sdf_path.stem
+        smiles = reference_smiles(mols[0])
+        parsed.append((name, smiles, {"confs": mols, "names": [name], "ccd": ccd}))
+    parsed.sort(key=lambda item: item[0])
+    ground_truth: dict[str, dict] = {}
+    for name, smiles, row in parsed:
+        previous = ground_truth.get(smiles)
+        if previous is not None:
+            raise ValueError(f"{name} and {previous['names'][0]} share SMILES {smiles}")
+        ground_truth[smiles] = row
+    return ground_truth
+
+
+def pool_frame_for_reference(frame: pd.DataFrame, ground_truth: dict) -> pd.DataFrame | None:
+    """Keep clustering, PoseBusters, and energy for the current reference molecules.
+
+    Returns None when any reference SMILES is missing, so the caller rescores
+    the pools. Reference-derived columns are dropped and filled again from the
+    new RMSD matrices.
+    """
+    if frame.empty or "smiles" not in frame.columns:
+        return None
+    if "n_generated" not in frame.columns or "greedy_clusters_1p0" not in frame.columns:
+        return None
+    needed = [str(smiles) for smiles in ground_truth]
+    have = set(frame["smiles"].astype(str))
+    if not set(needed).issubset(have):
+        return None
+    subset = frame[frame["smiles"].astype(str).isin(needed)].drop_duplicates("smiles").copy()
+    order = {smiles: index for index, smiles in enumerate(needed)}
+    subset["_order"] = subset["smiles"].astype(str).map(order)
+    subset = subset.sort_values("_order").drop(columns="_order")
+    drop = [
+        column
+        for column in subset.columns
+        if column in _REFERENCE_COLUMNS or column in _DESCRIPTOR_COLUMNS or column.startswith("cov_")
+    ]
+    return subset.drop(columns=drop).reset_index(drop=True)
 
 
 def heavy_atom_conformers(mols: list) -> list[Chem.Mol]:
