@@ -169,6 +169,11 @@ sources:
     ligand_set: ref
     root: data/results/runs/qwen_1p7b_fsq_bigdata_step47023_ref
 
+  - run_id: qwen_0p6b_casf_dedup_binned_pm12_step64000_core
+    label: "Qwen 0.6B CASF-dedup binned pm12 step 64000 (core)"
+    ligand_set: core
+    root: data/results/runs/qwen_0p6b_casf_dedup_binned_pm12_step64000_core
+
 reference_sources:
   - run_id: reference_core
     label: "Reference datasets (core)"

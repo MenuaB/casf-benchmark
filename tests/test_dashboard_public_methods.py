@@ -25,10 +25,11 @@ def test_stale_release_pin_follows_the_plinder22_release(monkeypatch) -> None:
         "dashboard-data-ref-protocol-v1",
         "dashboard-data-druglike-minimized-v1",
         "dashboard-data-plinder-v2",
+        "dashboard-data-plinder-v3",
         "latest",
     ):
         monkeypatch.setattr(dashboard.release_data, "release_tag", lambda tag=tag: tag)
-        assert dashboard.effective_release_tag() == "dashboard-data-plinder-v3"
+        assert dashboard.effective_release_tag() == "dashboard-data-casf-dedup-core-v1"
 
 
 def test_public_qwen_allowlist_preserves_non_qwen_rows() -> None:
@@ -79,5 +80,6 @@ def test_public_qwen_family_ids_and_labels_match_requested_shortlist() -> None:
         "qwen_1p7b_revisited": "Qwen 1.7B revisited",
         "qwen_4b_bigdata": "Qwen 4B bigdata",
         "qwen_4b_revisited": "Qwen 4B revisited",
+        "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B CASF-dedup binned pm12 (step 64000)",
     }
     assert dashboard.QWEN_DASHBOARD_LABELS == expected

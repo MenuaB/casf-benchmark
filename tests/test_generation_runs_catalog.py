@@ -205,8 +205,11 @@ def test_pr1_qwen_families_are_hidden_on_core_only() -> None:
     )
 
     hidden = hidden_on_core_family_ids()
+    # Not a PR #1 resample: its core run is meant to be shown.
+    shown_on_core = {"qwen_0p6b_casf_dedup_binned_pm12_step64000"}
     step_named = {family.id for family in load_families() if "_step" in family.id}
-    assert hidden == step_named
+    assert hidden == step_named - shown_on_core
+    assert not is_hidden_on_core("qwen_0p6b_casf_dedup_binned_pm12_step64000", "core")
     assert "qwen_0p6b_fsq_bigdata_pretrain" not in hidden
     assert "qwen_0p6b_fsq_bigdata_step70534" in hidden
     assert is_hidden_on_core("qwen_0p6b_fsq_bigdata_step70534", "core")
