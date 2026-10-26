@@ -440,9 +440,10 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-plinder-v1",
         "dashboard-data-ref-protocol-v1",
         "dashboard-data-druglike-minimized-v1",
+        "dashboard-data-plinder-v2",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-plinder-v2"
+_FORCED_RELEASE_TAG = "dashboard-data-plinder-v3"
 
 
 def effective_release_tag() -> str:
