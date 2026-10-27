@@ -17,7 +17,7 @@ def load_dashboard() -> ModuleType:
     return module
 
 
-def test_stale_release_pin_follows_the_plinder22_release(monkeypatch) -> None:
+def test_stale_release_pin_follows_the_current_dashboard_release(monkeypatch) -> None:
     dashboard = load_dashboard()
     for tag in (
         "dashboard-data-druglike-baselines-v1",
@@ -26,10 +26,11 @@ def test_stale_release_pin_follows_the_plinder22_release(monkeypatch) -> None:
         "dashboard-data-druglike-minimized-v1",
         "dashboard-data-plinder-v2",
         "dashboard-data-plinder-v3",
+        "dashboard-data-casf-dedup-core-v1",
         "latest",
     ):
         monkeypatch.setattr(dashboard.release_data, "release_tag", lambda tag=tag: tag)
-        assert dashboard.effective_release_tag() == "dashboard-data-casf-dedup-core-v1"
+        assert dashboard.effective_release_tag() == "dashboard-data-v2-binned-pm12-v1"
 
 
 def test_public_qwen_allowlist_preserves_non_qwen_rows() -> None:
@@ -81,5 +82,6 @@ def test_public_qwen_family_ids_and_labels_match_requested_shortlist() -> None:
         "qwen_4b_bigdata": "Qwen 4B bigdata",
         "qwen_4b_revisited": "Qwen 4B revisited",
         "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B CASF-dedup binned pm12 (step 64000)",
+        "qwen_0p6b_v2_binned_pm12_step66057": "v2 binned pm12",
     }
     assert dashboard.QWEN_DASHBOARD_LABELS == expected

@@ -361,3 +361,17 @@ def test_dashboard_chart_frame_accepts_threshold_rows() -> None:
     drawn = charts.recovery_chart(recovery).to_dict()
     assert drawn["mark"]["type"] == "line"
     assert drawn["encoding"]["x"]["scale"]["domain"] == [0, 1]
+
+
+def test_plinder_chart_uses_an_explicit_qwen_display_label() -> None:
+    charts = load_dashboard_module("plinder_charts")
+    row = pd.Series(
+        {
+            "label": "qwen_0p6b_v2_binned_pm12_step66057",
+            "display_label": "v2 binned pm12",
+            "generator": "Qwen",
+            "model_size": "0.6B",
+            "tokenizer": "legacy binned pm12",
+        }
+    )
+    assert charts.plot_display_name(row) == "v2 binned pm12"

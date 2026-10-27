@@ -106,6 +106,18 @@ runs:
     cohorts:
       druglike: 20260901_144618_qw600_pre_binned_paired_step-22000-hf_druglike
 
+  - label: qwen_0p6b_v2_binned_pm12_step66057
+    generator: Qwen
+    display_label: "v2 binned pm12"
+    model_size: 0.6B
+    tokenizer: "legacy binned pm12"
+    recipe: "PM12 legacy-v2 CASF-dedup pretraining"
+    step: 66057
+    cohorts:
+      casf16_core: qwen_0p6b_v2_binned_pm12_step66057_core
+      casf16_ref: qwen_0p6b_v2_binned_pm12_step66057_ref
+      druglike: qwen_0p6b_v2_binned_pm12_step66057_plinder
+
   - label: loqi_druglike
     generator: LOQI
     display_label: "LOQI"

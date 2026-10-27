@@ -235,6 +235,12 @@ families:
     method_prefix: qwen_0p6b_casf_dedup_binned_pm12_step64000
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_casf_dedup_binned_pm12_step64000_core
 
+  - id: qwen_0p6b_v2_binned_pm12_step66057
+    display_label: "v2 binned pm12"
+    method_prefix: qwen_0p6b_v2_binned_pm12_step66057
+    core_root: /mnt/weka/mbedrosian/pharma_generation_analysis/casf_benchmark_runs/qwen_0p6b_v2_binned_pm12_step66057_core
+    ref_root: /mnt/weka/mbedrosian/pharma_generation_analysis/casf_benchmark_runs/qwen_0p6b_v2_binned_pm12_step66057_ref
+
 reference:
   ligand_sets:
     core:

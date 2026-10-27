@@ -24,6 +24,10 @@ HEADLINE_THRESHOLDS = (0.5, 0.75, 1.0)
 
 def plot_display_name(row: pd.Series) -> str:
     generator = str(row.get("generator", "") or "")
+    display = row.get("display_label")
+    label = str(row.get("label", "") or "")
+    if pd.notna(display) and str(display) not in {"", "nan", label}:
+        return str(display)
     if generator.lower() == "qwen":
         parts = ["Qwen"]
         size = row.get("model_size")
@@ -33,10 +37,9 @@ def plot_display_name(row: pd.Series) -> str:
         if pd.notna(tokenizer) and str(tokenizer) not in {"", "nan"}:
             parts.append(str(tokenizer))
         return " ".join(parts)
-    display = row.get("display_label")
     if pd.notna(display) and str(display) not in {"", "nan"}:
         return str(display)
-    return str(row.get("label", ""))
+    return label
 
 
 def method_choices(labels: list[str]) -> list[str]:

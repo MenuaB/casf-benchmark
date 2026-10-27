@@ -60,6 +60,7 @@ LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-druglike-minimized-v1",
         "dashboard-data-plinder-v2",
         "dashboard-data-plinder-v3",
+        "dashboard-data-casf-dedup-core-v1",
     }
 )
 
