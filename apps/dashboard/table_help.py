@@ -6,6 +6,31 @@ import streamlit as st
 
 # Keys match the `name` passed to display_table() in streamlit_app.py.
 TABLE_HELP: dict[str, dict[str, str | dict[str, str]]] = {
+    "geom_v1_tokenizer_control": {
+        "summary": (
+            "Controlled V1 tokenizer comparison on the original 1,000-molecule "
+            "GEOM evaluation set. Architecture, merged-dedup training corpus, epoch "
+            "count, generation attempt count, and evaluation target are matched; "
+            "checkpoint steps differ because the tokenizations produce different "
+            "training sequences. This table does not contain a V2 result."
+        ),
+        "columns": {
+            "display_label / tokenizer / checkpoint_step": "Checkpoint identity and coordinate representation.",
+            "n_molecules": "Molecules in the shared GEOM evaluation set.",
+            "accounted_generation_attempts": "Valid conformers plus all logged generation failures.",
+            "valid_conformers / valid_generation_rate": "Successfully parsed, identity-matched generated conformers; higher is better.",
+            "smiles_mismatch_count / smiles_mismatch_per_1k": "Generated outputs whose molecular identity did not match the prompt; lower is better.",
+            "mol_parse_fail_count / no_eos_count": "Logged parse and missing-EOS failures; lower is better.",
+            "pb_pass_rate": "PoseBusters all-check pass fraction over valid conformers; higher is better.",
+            "bond_lengths_pass_rate / bond_angles_pass_rate": "PoseBusters local-geometry pass fractions.",
+            "steric_clash_pass_rate": "PoseBusters internal-steric-clash pass fraction.",
+            "all_atoms_connected_pass_rate": "PoseBusters connected-graph pass fraction.",
+            "cov_r_0p75_mean / cov_r_0p75_median": "GEOM coverage recall at 0.75 Å; higher is better.",
+            "cov_p_0p75_mean / cov_p_0p75_median": "GEOM coverage precision at 0.75 Å; higher is better.",
+            "mat_r_mean / mat_r_median": "GEOM matching recall RMSD in Å; lower is better.",
+            "mat_p_mean / mat_p_median": "GEOM matching precision RMSD in Å; lower is better.",
+        },
+    },
     "overview": {
         "summary": (
             "Ensemble size and geometric diversity for each method at the selected "

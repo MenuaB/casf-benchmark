@@ -60,6 +60,13 @@ render_threshold_charts = _load_sibling_module("threshold_charts").render_thresh
 _DEFAULT_DB = DEFAULT_DASHBOARD_DB
 DEFAULT_DB = Path(os.environ.get("CASF_DASHBOARD_DB", str(_DEFAULT_DB)))
 DEFAULT_EXTENDED_DB = Path(os.environ.get("CASF_EXTENDED_DB", str(_DEFAULT_EXTENDED_DB)))
+GEOM_V1_COMPARISON_CSV = (
+    Path(__file__).resolve().parents[2]
+    / "data"
+    / "results"
+    / "tables"
+    / "geom_v1_tokenizer_comparison.csv"
+)
 TIERS = ("fixed", "dynamic", "chembl_count")
 QWEN_DASHBOARD_LABELS = {
     "qwen_0p6b_bigdata": "Qwen 0.6B bigdata",
@@ -73,9 +80,17 @@ QWEN_DASHBOARD_LABELS = {
     "qwen_1p7b_revisited": "Qwen 1.7B revisited",
     "qwen_4b_bigdata": "Qwen 4B bigdata",
     "qwen_4b_revisited": "Qwen 4B revisited",
-    "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B CASF-dedup binned pm12 (step 64000)",
+    "qwen_0p6b_fsq_bigdata_step70534": "Qwen 0.6B V1 FSQ bigdata (unfiltered, step 70534)",
+    "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B V1 CASF-dedup binned pm12 (step 64000)",
     "qwen_0p6b_v2_binned_pm12_step66057": "v2 binned pm12",
 }
+V1_V2_COMPARISON_FAMILIES = frozenset(
+    {
+        "qwen_0p6b_fsq_bigdata_step70534",
+        "qwen_0p6b_casf_dedup_binned_pm12_step64000",
+        "qwen_0p6b_v2_binned_pm12_step66057",
+    }
+)
 BREAKDOWN_LABELS = {
     "Total": "total",
     "Rotatable bonds": "rotatable_bonds",
@@ -589,11 +604,116 @@ def filter_public_methods(frame: pd.DataFrame) -> pd.DataFrame:
                 regex=True,
             )
     out = out[~is_qwen | family.isin(QWEN_DASHBOARD_LABELS)].copy()
-    if "display_label" in out.columns and "family" in out.columns:
-        public_labels = out["family"].map(QWEN_DASHBOARD_LABELS)
+    if "display_label" in out.columns:
+        identifiers = pd.Series("", index=out.index, dtype=str)
+        if "label" in out.columns:
+            identifiers = out["label"].fillna("").astype(str)
+        if "family" in out.columns:
+            families = out["family"].fillna("").astype(str)
+            identifiers = families.where(families.ne(""), identifiers)
+        public_labels = identifiers.map(QWEN_DASHBOARD_LABELS)
         has_public_label = public_labels.notna()
         out.loc[has_public_label, "display_label"] = public_labels[has_public_label]
     return out
+
+
+@st.cache_data(show_spinner=False)
+def load_geom_v1_comparison(csv_path: str, csv_mtime_ns: int) -> pd.DataFrame:
+    """Load the checked-in, aggregate GEOM V1 tokenizer-control results."""
+    del csv_mtime_ns
+    return pd.read_csv(csv_path)
+
+
+def render_v1_v2_provenance_note() -> None:
+    st.caption(
+        "Comparison provenance: the V1 CASF-dedup binned and V2 binned rows are "
+        "benchmark-deduplicated. The V1 FSQ bigdata step-70534 row is an unfiltered "
+        "contextual reference, not a tokenizer-only control. Use **GEOM V1 control** "
+        "for the same-corpus V1 binned-vs-CoordToken comparison."
+    )
+
+
+def render_geom_v1_comparison(csv_path: Path = GEOM_V1_COMPARISON_CSV) -> None:
+    st.header("GEOM V1 tokenizer control")
+    st.caption(
+        "Qwen 0.6B, V1 training stack, one epoch, and the same merged-dedup corpus. "
+        "Both checkpoints were evaluated on the same 1,000-molecule original GEOM "
+        "set at an RMSD threshold of 0.75 Å. Higher is better for validity, PB, "
+        "and COV; lower is better for MAT and failure rates."
+    )
+    if not csv_path.is_file():
+        st.info(f"GEOM V1 comparison table not found: {csv_path}")
+        return
+
+    frame = load_geom_v1_comparison(str(csv_path), csv_path.stat().st_mtime_ns)
+    by_tokenizer = frame.set_index("tokenizer")
+    if {"binned pm12", "CoordToken (FSQ)"}.issubset(by_tokenizer.index):
+        binned = by_tokenizer.loc["binned pm12"]
+        fsq = by_tokenizer.loc["CoordToken (FSQ)"]
+        mismatch_reduction = 1.0 - (
+            fsq["smiles_mismatch_per_1k"] / binned["smiles_mismatch_per_1k"]
+        )
+        st.info(
+            "Within this matched V1 control, CoordToken/FSQ has "
+            f"{100 * (fsq['valid_generation_rate'] - binned['valid_generation_rate']):+.2f} pp "
+            "more valid outputs, "
+            f"{100 * mismatch_reduction:.1f}% fewer SMILES mismatches, "
+            f"{100 * (fsq['pb_pass_rate'] - binned['pb_pass_rate']):+.2f} pp higher PB pass rate, "
+            f"and {100 * (fsq['cov_r_0p75_mean'] - binned['cov_r_0p75_mean']):+.2f} pp COV-R."
+        )
+
+    columns = [
+        "display_label",
+        "tokenizer",
+        "checkpoint_step",
+        "n_molecules",
+        "accounted_generation_attempts",
+        "valid_conformers",
+        "valid_generation_rate",
+        "smiles_mismatch_count",
+        "smiles_mismatch_per_1k",
+        "mol_parse_fail_count",
+        "no_eos_count",
+        "pb_pass_rate",
+        "bond_lengths_pass_rate",
+        "bond_angles_pass_rate",
+        "steric_clash_pass_rate",
+        "all_atoms_connected_pass_rate",
+        "cov_r_0p75_mean",
+        "cov_r_0p75_median",
+        "cov_p_0p75_mean",
+        "cov_p_0p75_median",
+        "mat_r_mean",
+        "mat_r_median",
+        "mat_p_mean",
+        "mat_p_median",
+    ]
+    display_table(
+        frame,
+        columns,
+        "geom_v1_tokenizer_control",
+        height=COMPARISON_TABLE_HEIGHT_PX,
+    )
+    st.caption(
+        "The accounted attempt count is valid conformers plus the logged SMILES "
+        "mismatch, parse-failure, and no-EOS counts. These aggregate results do not "
+        "test V2; a direct V1→V2 claim still requires running V2 on this same GEOM set."
+    )
+    with st.expander("Run provenance", expanded=False):
+        st.dataframe(
+            frame[
+                [
+                    "display_label",
+                    "training_corpus",
+                    "evaluation_set",
+                    "checkpoint_path",
+                    "generation_run",
+                    "source_report",
+                ]
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -949,6 +1069,7 @@ def _plinder_chart_methods(summary: pd.DataFrame) -> list[str]:
 
 def render_plinder_panel(extended_db_path: Path) -> None:
     st.header("PLINDER")
+    render_v1_v2_provenance_note()
     if not extended_db_path.exists():
         st.info(f"Extended DB not found: {extended_db_path}. Run casf-analyze-plinder to publish the Plinder tables.")
         return
@@ -1245,20 +1366,29 @@ def main() -> None:
     ligand_sets.extend(name for name in present_sets if name not in ligand_sets)
     if "plinder" not in ligand_sets:
         ligand_sets.append("plinder")
+    ligand_sets.append("geom_v1_control")
     ligand_set = st.sidebar.selectbox(
         "Ligand set",
         ligand_sets,
         index=0 if "core" not in ligand_sets else ligand_sets.index("core"),
+        format_func=lambda value: (
+            "GEOM V1 control" if value == "geom_v1_control" else value
+        ),
     )
     if ligand_set == "plinder":
         extended_db_path = sidebar_extended_db_path(db_path, table_names)
         render_plinder_panel(extended_db_path)
+        return
+    if ligand_set == "geom_v1_control":
+        render_geom_v1_comparison()
         return
 
     tier = st.sidebar.selectbox("Tier", ["All", *TIERS], index=0)
     family_source = comparison_rows[comparison_rows["ligand_set"].astype(str) == ligand_set]
     families = ["All", *sorted(family_source["family"].dropna().astype(str).unique())]
     family = st.sidebar.selectbox("Family", families)
+    if family == "All" or family in V1_V2_COMPARISON_FAMILIES:
+        render_v1_v2_provenance_note()
 
     with st.sidebar.expander("Break down aggregates", expanded=False):
         breakdown_label = st.radio("View", list(BREAKDOWN_LABELS), index=0)
