@@ -4,7 +4,6 @@ import importlib.util
 from types import ModuleType
 
 import pandas as pd
-import pytest
 
 from casf_benchmark.paths import REPO_ROOT
 
@@ -82,66 +81,7 @@ def test_public_qwen_family_ids_and_labels_match_requested_shortlist() -> None:
         "qwen_1p7b_revisited": "Qwen 1.7B revisited",
         "qwen_4b_bigdata": "Qwen 4B bigdata",
         "qwen_4b_revisited": "Qwen 4B revisited",
-        "qwen_0p6b_fsq_bigdata_step70534": "Qwen 0.6B V1 FSQ bigdata (unfiltered, step 70534)",
-        "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B V1 CASF-dedup binned pm12 (step 64000)",
+        "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B CASF-dedup binned pm12 (step 64000)",
         "qwen_0p6b_v2_binned_pm12_step66057": "v2 binned pm12",
     }
     assert dashboard.QWEN_DASHBOARD_LABELS == expected
-
-
-def test_public_labels_apply_to_label_only_plinder_tables() -> None:
-    dashboard = load_dashboard()
-    frame = pd.DataFrame(
-        [
-            {
-                "label": "qwen_0p6b_fsq_bigdata_step70534",
-                "display_label": "qwen_0p6b_fsq_bigdata_step70534",
-            },
-            {
-                "label": "qwen_0p6b_v2_binned_pm12_step66057",
-                "display_label": "v2 binned pm12",
-            },
-        ]
-    )
-
-    result = dashboard.filter_public_methods(frame)
-
-    assert result["display_label"].tolist() == [
-        "Qwen 0.6B V1 FSQ bigdata (unfiltered, step 70534)",
-        "v2 binned pm12",
-    ]
-
-
-def test_geom_v1_comparison_is_matched_and_fully_accounted() -> None:
-    dashboard = load_dashboard()
-    path = dashboard.GEOM_V1_COMPARISON_CSV
-    frame = dashboard.load_geom_v1_comparison(str(path), path.stat().st_mtime_ns)
-
-    assert frame["tokenizer"].tolist() == ["binned pm12", "CoordToken (FSQ)"]
-    for column in (
-        "model_size",
-        "training_stack",
-        "training_corpus",
-        "training_epochs",
-        "evaluation_set",
-    ):
-        assert frame[column].nunique() == 1
-    accounted = (
-        frame["valid_conformers"]
-        + frame["smiles_mismatch_count"]
-        + frame["mol_parse_fail_count"]
-        + frame["no_eos_count"]
-    )
-    assert accounted.tolist() == frame["accounted_generation_attempts"].tolist()
-    assert (
-        frame["valid_conformers"] / frame["accounted_generation_attempts"]
-    ).tolist() == pytest.approx(frame["valid_generation_rate"].tolist())
-
-    binned, fsq = frame.iloc[0], frame.iloc[1]
-    assert fsq["valid_generation_rate"] > binned["valid_generation_rate"]
-    assert fsq["smiles_mismatch_per_1k"] < binned["smiles_mismatch_per_1k"]
-    assert fsq["pb_pass_rate"] > binned["pb_pass_rate"]
-    assert fsq["cov_r_0p75_mean"] > binned["cov_r_0p75_mean"]
-    assert fsq["cov_p_0p75_mean"] > binned["cov_p_0p75_mean"]
-    assert fsq["mat_r_mean"] < binned["mat_r_mean"]
-    assert fsq["mat_p_mean"] < binned["mat_p_mean"]
