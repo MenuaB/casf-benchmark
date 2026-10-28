@@ -174,6 +174,16 @@ def test_v2_binned_pm12_covers_every_public_cohort_with_requested_name() -> None
     assert describe_run(entry.label, entry.descriptors)["display_label"] == "v2 binned pm12"
 
 
+def test_v2_fsq_covers_every_public_cohort_with_requested_name() -> None:
+    entry = next(
+        entry
+        for entry in load_generation_run_entries()
+        if entry.label == "qwen_0p6b_v2_fsq_step41054"
+    )
+    assert set(entry.cohorts) == {"casf16_core", "casf16_ref", "druglike"}
+    assert describe_run(entry.label, entry.descriptors)["display_label"] == "qwen v2 0.6 fsq"
+
+
 def test_per_checkpoint_families_claim_only_ligand_sets_that_have_results() -> None:
     """A family must not advertise a ligand set the analysis never produced.
 
@@ -219,11 +229,13 @@ def test_pr1_qwen_families_are_hidden_on_core_only() -> None:
     shown_on_core = {
         "qwen_0p6b_casf_dedup_binned_pm12_step64000",
         "qwen_0p6b_v2_binned_pm12_step66057",
+        "qwen_0p6b_v2_fsq_step41054",
     }
     step_named = {family.id for family in load_families() if "_step" in family.id}
     assert hidden == step_named - shown_on_core
     assert not is_hidden_on_core("qwen_0p6b_casf_dedup_binned_pm12_step64000", "core")
     assert not is_hidden_on_core("qwen_0p6b_v2_binned_pm12_step66057", "core")
+    assert not is_hidden_on_core("qwen_0p6b_v2_fsq_step41054", "core")
     assert "qwen_0p6b_fsq_bigdata_pretrain" not in hidden
     assert "qwen_0p6b_fsq_bigdata_step70534" in hidden
     assert is_hidden_on_core("qwen_0p6b_fsq_bigdata_step70534", "core")

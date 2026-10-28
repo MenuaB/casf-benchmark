@@ -118,6 +118,18 @@ runs:
       casf16_ref: qwen_0p6b_v2_binned_pm12_step66057_ref
       druglike: qwen_0p6b_v2_binned_pm12_step66057_plinder
 
+  - label: qwen_0p6b_v2_fsq_step41054
+    generator: Qwen
+    display_label: "qwen v2 0.6 fsq"
+    model_size: 0.6B
+    tokenizer: "CoordToken atom12 reg1"
+    recipe: "CoordToken V2 CASF-dedup pretraining"
+    step: 41054
+    cohorts:
+      casf16_core: qwen_0p6b_v2_fsq_step41054_core
+      casf16_ref: qwen_0p6b_v2_fsq_step41054_ref
+      druglike: qwen_0p6b_v2_fsq_step41054_plinder
+
   - label: loqi_druglike
     generator: LOQI
     display_label: "LOQI"

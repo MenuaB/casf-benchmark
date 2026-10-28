@@ -75,6 +75,7 @@ QWEN_DASHBOARD_LABELS = {
     "qwen_4b_revisited": "Qwen 4B revisited",
     "qwen_0p6b_casf_dedup_binned_pm12_step64000": "Qwen 0.6B CASF-dedup binned pm12 (step 64000)",
     "qwen_0p6b_v2_binned_pm12_step66057": "v2 binned pm12",
+    "qwen_0p6b_v2_fsq_step41054": "qwen v2 0.6 fsq",
 }
 BREAKDOWN_LABELS = {
     "Total": "total",
