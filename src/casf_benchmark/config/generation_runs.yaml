@@ -130,6 +130,12 @@ runs:
       casf16_ref: qwen_0p6b_v2_fsq_step41054_ref
       druglike: qwen_0p6b_v2_fsq_step41054_plinder
 
+  - label: qwen_0p6b_casf_dedup_binned_pm12_step64000
+    cohorts:
+      casf16_core: 20261026_163157_qw600_casf_dedup_binned_pm12_step-64000-hf_casf16_core_chembl
+      casf16_ref: 20261028_024139_qw600_casf_dedup_binned_pm12_step-64000-hf_casf16_ref_chembl
+      druglike: 20261026_001527_qw600_casf_dedup_binned_pm12_step-64000-hf_druglike_one_prompt
+
   - label: loqi_druglike
     generator: LOQI
     display_label: "LOQI"

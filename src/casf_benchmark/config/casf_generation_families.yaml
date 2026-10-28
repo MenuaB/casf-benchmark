@@ -229,11 +229,12 @@ families:
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_fsq_bigdata_step47023_core
     ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_1p7b_fsq_bigdata_step47023_ref
 
-  # Core only so far. Shown on core (no hide_on_core), unlike the step-tagged runs above.
+  # Shown on core (no hide_on_core), unlike the step-tagged runs above.
   - id: qwen_0p6b_casf_dedup_binned_pm12_step64000
     display_label: "Qwen 0.6B CASF-dedup binned pm12 (step 64000)"
     method_prefix: qwen_0p6b_casf_dedup_binned_pm12_step64000
     core_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_casf_dedup_binned_pm12_step64000_core
+    ref_root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_casf_dedup_binned_pm12_step64000_ref
 
   - id: qwen_0p6b_v2_binned_pm12_step66057
     display_label: "v2 binned pm12"

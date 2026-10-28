@@ -446,9 +446,10 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-plinder-v2",
         "dashboard-data-plinder-v3",
         "dashboard-data-casf-dedup-core-v1",
+        "dashboard-data-v2-binned-pm12-v1",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-v2-binned-pm12-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-casf-dedup-ref-v1"
 
 
 def effective_release_tag() -> str:

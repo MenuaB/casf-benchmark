@@ -179,6 +179,11 @@ sources:
     ligand_set: core
     root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_casf_dedup_binned_pm12_step64000_core
 
+  - run_id: qwen_0p6b_casf_dedup_binned_pm12_step64000_ref
+    label: "Qwen 0.6B CASF-dedup binned pm12 step 64000 (ref)"
+    ligand_set: ref
+    root: /mnt/weka/vtarasov/outputs/casf_benchmark_runs/qwen_0p6b_casf_dedup_binned_pm12_step64000_ref
+
   - run_id: qwen_0p6b_v2_binned_pm12_step66057_core
     label: "v2 binned pm12 (core)"
     ligand_set: core
