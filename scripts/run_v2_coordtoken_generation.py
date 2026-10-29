@@ -2,10 +2,10 @@
 """Generate the paper cohorts from the final V2 CoordToken checkpoint.
 
 The inference model directory is derived from the immutable training export.  The
-export contains the versioned CoordToken tokenizer contract, but its HF config is
-missing the three mirrored provenance fields required by inference.  We add those
-fields in a small symlinked model directory instead of mutating the training
-artifact.
+export contains the right token IDs but retained the older mixed-data decoder hash.
+The training corpus was encoded with the CASF-filtered decoder.  Bind the derived
+inference directory to that corpus decoder contract, and add the three mirrored
+provenance fields required by inference, without mutating the training artifact.
 """
 
 from __future__ import annotations
@@ -24,10 +24,20 @@ DEFAULT_MODEL_EXPORT = Path(
 )
 DEFAULT_COORDTOKEN_CHECKPOINT = Path(
     "/mnt/weka/fgeikyan/CoordToken/artifacts/releases/"
-    "coordtoken-atom12-reg1-mixed-epoch2-20261017/model.pt"
+    "coordtoken-atom12-reg1-casf-epoch2-20261020/model.pt"
+)
+DEFAULT_COORDTOKEN_CONTRACT = Path(
+    "/mnt/weka/fgeikyan/CoordToken/artifacts/releases/"
+    "coordtoken-atom12-reg1-casf-epoch2-20261020/qwen_tokenizer/"
+    "coordtoken_contract.json"
+)
+DEFAULT_SOURCE_TOKENIZER = Path(
+    "/mnt/weka/fgeikyan/CoordToken/research/coordtoken_encoding_20261019/"
+    "source/src/molgen3D/training/tokenizers/"
+    "Qwen3_tokenizer_coordtoken_atom12_reg1"
 )
 DEFAULT_WORK_ROOT = Path(
-    "/mnt/weka/mbedrosian/pharma_generation_analysis/v2_fsq_step41054"
+    "/mnt/weka/mbedrosian/pharma_generation_analysis/v2_fsq_step41054_corrected"
 )
 DEFAULT_RUN_ID = "qwen_0p6b_v2_fsq_step41054"
 DEFAULT_INPUTS = {
@@ -82,13 +92,115 @@ def atomic_pickle_dump(path: Path, payload: object) -> None:
     os.replace(temporary, path)
 
 
-def prepare_inference_model(source: Path, destination: Path) -> tuple[Path, dict]:
-    """Create and validate a derived HF directory with the missing contract fields."""
+def tokenizer_id_map(tokenizer_path: Path) -> dict[str, int]:
+    """Return every token ID, rejecting contradictory tokenizer entries."""
+    payload = read_json(tokenizer_path / "tokenizer.json")
+    token_ids = dict(payload["model"]["vocab"])
+    for entry in payload.get("added_tokens", []):
+        token = entry["content"]
+        token_id = entry["id"]
+        if token in token_ids and token_ids[token] != token_id:
+            raise ValueError(
+                f"Tokenizer assigns two IDs to {token!r}: "
+                f"{token_ids[token]} and {token_id}"
+            )
+        token_ids[token] = token_id
+    return token_ids
+
+
+def verify_source_tokenizer(
+    model_export: Path,
+    source_tokenizer: Path,
+) -> dict:
+    """Prove that the training wrapper is an append-only copy of the source.
+
+    Training deliberately used a compatibility wrapper that appends the 256 old
+    binned-coordinate tokens.  Inference must use that wrapper because it matches
+    the model vocabulary, but every token from the requested CoordToken tokenizer
+    must retain exactly the same ID.
+    """
+    model_export = model_export.resolve()
+    source_tokenizer = source_tokenizer.resolve()
+    manifest = read_json(model_export / "molgen3d_tokenizer_manifest.json")
+    manifest_source = Path(manifest["source"]).resolve()
+    if manifest_source != source_tokenizer:
+        raise ValueError(
+            "Training manifest names a different source tokenizer: "
+            f"{manifest_source} != {source_tokenizer}"
+        )
+
+    source_sha256 = sha256(source_tokenizer / "tokenizer.json")
+    source_metadata = manifest.get("source_metadata", {})
+    if source_sha256 != source_metadata.get("dataset_tokenizer_json_sha256"):
+        raise ValueError("Source tokenizer hash differs from the training manifest")
+    if source_metadata.get("source_format") != COORDTOKEN_FORMAT:
+        raise ValueError(
+            f"Unexpected source tokenizer format: {source_metadata.get('source_format')}"
+        )
+
+    source_ids = tokenizer_id_map(source_tokenizer)
+    wrapper_ids = tokenizer_id_map(model_export)
+    changed = {
+        token: (token_id, wrapper_ids.get(token))
+        for token, token_id in source_ids.items()
+        if wrapper_ids.get(token) != token_id
+    }
+    if changed:
+        examples = list(changed.items())[:5]
+        raise ValueError(f"Training wrapper changed source token IDs: {examples}")
+
+    wrapper_only = {
+        token: token_id for token, token_id in wrapper_ids.items() if token not in source_ids
+    }
+    expected_wrapper_only = {f"b{index:03d}": 151673 + index for index in range(256)}
+    if wrapper_only != expected_wrapper_only:
+        raise ValueError(
+            "Training tokenizer is not the expected append-only binned-token wrapper"
+        )
+
+    return {
+        "path": str(source_tokenizer),
+        "sha256": source_sha256,
+        "num_tokens": len(source_ids),
+        "wrapper_extra_tokens": len(wrapper_only),
+    }
+
+
+def prepare_inference_model(
+    source: Path,
+    destination: Path,
+    decoder_contract_path: Path,
+    source_tokenizer_path: Path,
+) -> tuple[Path, dict]:
+    """Create a derived HF directory bound to the corpus' decoder contract."""
     source = source.resolve()
+    source_tokenizer = verify_source_tokenizer(source, source_tokenizer_path)
     source_contract_path = source / "coordtoken_contract.json"
-    contract = read_json(source_contract_path)
+    source_contract = read_json(source_contract_path)
+    contract = read_json(decoder_contract_path)
     if contract["format"] != COORDTOKEN_FORMAT:
         raise ValueError(f"Unexpected CoordToken format: {contract['format']}")
+    # The two CoordToken releases deliberately share an LM alphabet.  Their sole
+    # contract difference is the learned decoder checkpoint, whose code meanings
+    # are not interchangeable.
+    for key in source_contract:
+        if key == "checkpoint_sha256":
+            continue
+        if source_contract[key] != contract.get(key):
+            raise ValueError(f"LM and decoder contracts differ in {key}")
+    contract["training_export_declared_checkpoint_sha256"] = source_contract[
+        "checkpoint_sha256"
+    ]
+    tokenizer_manifest = read_json(source / "molgen3d_tokenizer_manifest.json")
+    training_checkpoint_sha256 = tokenizer_manifest.get("source_metadata", {}).get(
+        "coordtoken_checkpoint_sha256"
+    )
+    if training_checkpoint_sha256 != contract["checkpoint_sha256"]:
+        raise ValueError(
+            "Corpus decoder contract differs from the training tokenizer manifest"
+        )
+    contract["training_manifest_checkpoint_sha256"] = training_checkpoint_sha256
+    contract["training_source_tokenizer"] = source_tokenizer
     tokenizer_sha256 = sha256(source / "tokenizer.json")
     if tokenizer_sha256 != contract["tokenizer_sha256"]:
         # The V2 exporter rewrote tokenizer.json after copying the contract.  Its
@@ -117,15 +229,13 @@ def prepare_inference_model(source: Path, destination: Path) -> tuple[Path, dict
             link.symlink_to(item)
 
     config_path = destination / "config.json"
-    if config_path.exists() and read_json(config_path) != config:
-        raise ValueError(f"Existing derived config differs: {config_path}")
-    if not config_path.exists():
-        atomic_json_dump(config_path, config)
+    if config_path.is_symlink():
+        raise ValueError(f"Derived config must not be a symlink: {config_path}")
+    atomic_json_dump(config_path, config)
     contract_path = destination / "coordtoken_contract.json"
-    if contract_path.exists() and read_json(contract_path) != contract:
-        raise ValueError(f"Existing derived contract differs: {contract_path}")
-    if not contract_path.exists():
-        atomic_json_dump(contract_path, contract)
+    if contract_path.is_symlink():
+        raise ValueError(f"Derived contract must not be a symlink: {contract_path}")
+    atomic_json_dump(contract_path, contract)
     return destination, contract
 
 
@@ -169,7 +279,10 @@ def run_generation(args: argparse.Namespace) -> None:
 
     source_model = args.model_export.resolve()
     derived_model, contract = prepare_inference_model(
-        source_model, args.work_root / "inference_model"
+        source_model,
+        args.work_root / "inference_model",
+        args.coordtoken_contract.resolve(),
+        args.source_tokenizer.resolve(),
     )
     if sha256(args.coordtoken_checkpoint) != contract["checkpoint_sha256"]:
         raise ValueError("CoordToken decoder checkpoint hash does not match the tokenizer")
@@ -234,13 +347,23 @@ def run_generation(args: argparse.Namespace) -> None:
         "cohort": args.cohort,
         "coordtoken_checkpoint": str(args.coordtoken_checkpoint),
         "coordtoken_checkpoint_sha256": contract["checkpoint_sha256"],
+        "coordtoken_contract": str(args.coordtoken_contract.resolve()),
         "coordtoken_format": contract["format"],
         "coordtoken_source_contract_sha256": sha256(
             source_model / "coordtoken_contract.json"
         ),
+        "coordtoken_training_source_tokenizer": contract[
+            "training_source_tokenizer"
+        ],
         "coordtoken_source_tokenizer_sha256": contract.get(
             "source_tokenizer_sha256", contract["tokenizer_sha256"]
         ),
+        "coordtoken_training_export_declared_checkpoint_sha256": contract[
+            "training_export_declared_checkpoint_sha256"
+        ],
+        "coordtoken_training_manifest_checkpoint_sha256": contract[
+            "training_manifest_checkpoint_sha256"
+        ],
         "derived_model_path": str(derived_model),
         "input_path": str(args.input.resolve()),
         "input_sha256": sha256(args.input),
@@ -312,6 +435,12 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--model-export", type=Path, default=DEFAULT_MODEL_EXPORT)
     generate.add_argument(
         "--coordtoken-checkpoint", type=Path, default=DEFAULT_COORDTOKEN_CHECKPOINT
+    )
+    generate.add_argument(
+        "--coordtoken-contract", type=Path, default=DEFAULT_COORDTOKEN_CONTRACT
+    )
+    generate.add_argument(
+        "--source-tokenizer", type=Path, default=DEFAULT_SOURCE_TOKENIZER
     )
     generate.add_argument("--work-root", type=Path, default=DEFAULT_WORK_ROOT)
     generate.add_argument("--run-id", default=DEFAULT_RUN_ID)

@@ -242,6 +242,12 @@ families:
     core_root: /mnt/weka/mbedrosian/pharma_generation_analysis/casf_benchmark_runs/qwen_0p6b_v2_binned_pm12_step66057_core
     ref_root: /mnt/weka/mbedrosian/pharma_generation_analysis/casf_benchmark_runs/qwen_0p6b_v2_binned_pm12_step66057_ref
 
+  - id: qwen_0p6b_v2_fsq_step41054
+    display_label: "qwen v2 0.6 fsq"
+    method_prefix: qwen_0p6b_v2_fsq_step41054
+    core_root: /mnt/weka/mbedrosian/pharma_generation_analysis/v2_fsq_step41054_corrected/casf_benchmark_runs/qwen_0p6b_v2_fsq_step41054_core
+    ref_root: /mnt/weka/mbedrosian/pharma_generation_analysis/v2_fsq_step41054_corrected/casf_benchmark_runs/qwen_0p6b_v2_fsq_step41054_ref
+
 reference:
   ligand_sets:
     core:

@@ -12,7 +12,9 @@ from rdkit.Chem import rdMolAlign
 
 def best_rmsd(generated: Chem.Mol, reference: Chem.Mol) -> float:
     try:
-        return float(rdMolAlign.GetBestRMS(generated, reference))
+        # GetBestRMS moves its probe. Rows share generated molecules across
+        # threads, so aligning the shared object can corrupt concurrent scores.
+        return float(rdMolAlign.GetBestRMS(Chem.Mol(generated), reference))
     except Exception:
         return float("nan")
 
