@@ -19,6 +19,7 @@ from casf_benchmark.analysis.metrics import (
     safe_sum,
     threshold_tag,
 )
+from casf_benchmark.analysis.ref_dedup import apply_derived_ligand_sets, parse_derived_ligand_sets
 from casf_benchmark.catalog import (
     display_label_for_method,
     family_by_id,
@@ -404,6 +405,9 @@ def build_global_per_ligand_long(
             )
         if "_source_mtime" in global_long.columns:
             global_long = global_long.drop(columns=["_source_mtime"])
+    specs = parse_derived_ligand_sets(config_path)
+    if specs and not global_long.empty:
+        global_long = apply_derived_ligand_sets(global_long, specs)
     if output_csv is not None:
         output_csv.parent.mkdir(parents=True, exist_ok=True)
         global_long.to_csv(output_csv, index=False)
@@ -414,6 +418,18 @@ def _mean_column(frame: pd.DataFrame, column: str) -> float:
     if column not in frame.columns:
         return math.nan
     return safe_mean(pd.to_numeric(frame[column], errors="coerce").tolist())
+
+
+def _hit_rate_column(frame: pd.DataFrame, column: str, *, missing_as_miss: bool) -> float:
+    """Mean hit flag. Derived cohorts count a missing flag as a miss when any hit is defined."""
+    if column not in frame.columns:
+        return math.nan
+    numeric = pd.to_numeric(frame[column], errors="coerce")
+    if numeric.empty or not numeric.notna().any():
+        return math.nan
+    if missing_as_miss:
+        return float(numeric.fillna(0).mean())
+    return safe_mean(numeric.tolist())
 
 
 def _median_column(frame: pd.DataFrame, column: str) -> float:
@@ -432,7 +448,11 @@ def _is_compare_source(source: object) -> bool:
     return str(source) not in {"casf_crystal", "casf_opt", "chembl3d_sdf"}
 
 
-def build_comparison_master(global_long: pd.DataFrame) -> pd.DataFrame:
+def build_comparison_master(
+    global_long: pd.DataFrame,
+    *,
+    missing_as_miss_ligand_sets: frozenset[str] = frozenset(),
+) -> pd.DataFrame:
     if global_long.empty:
         return pd.DataFrame()
     data = ensure_metadata(global_long)
@@ -529,9 +549,16 @@ def build_comparison_master(global_long: pd.DataFrame) -> pd.DataFrame:
                 f"singleton_fraction_{tag}",
             ):
                 row[column] = _mean_column(frame, column)
+        missing_as_miss = str(row["ligand_set"]) in missing_as_miss_ligand_sets
         for prefix in ("casf", "casf_opt"):
             for tag in ("0p25", "0p5", "0p75", "2p0"):
-                row[f"{prefix}_hit_{tag}"] = _mean_column(frame, f"{prefix}_hit_{tag}")
+                row[f"{prefix}_hit_{tag}"] = _hit_rate_column(
+                    frame,
+                    f"{prefix}_hit_{tag}",
+                    missing_as_miss=missing_as_miss,
+                )
+        if missing_as_miss and "casf_best_rmsd" in frame.columns:
+            row["defined_rmsd_ligands"] = int(pd.to_numeric(frame["casf_best_rmsd"], errors="coerce").notna().sum())
         rows.append(row)
     master = pd.DataFrame(rows)
     if master.empty:
@@ -563,15 +590,25 @@ def add_ligands_scope(frame: pd.DataFrame, confs_col: str) -> pd.DataFrame:
     return out
 
 
+def _missing_as_miss_sets(config_path: Path) -> frozenset[str]:
+    return frozenset(spec.id for spec in parse_derived_ligand_sets(config_path))
+
+
 def build_master_frame(config_path: Path) -> tuple[int, pd.DataFrame]:
     sources = expand_sources(config_path)
     global_long = build_global_per_ligand_long(config_path, output_csv=None)
-    return len(sources), build_comparison_master(global_long)
+    return len(sources), build_comparison_master(
+        global_long,
+        missing_as_miss_ligand_sets=_missing_as_miss_sets(config_path),
+    )
 
 
 def build_master_csv(config_path: Path, output_csv: Path) -> tuple[int, int]:
     global_long = build_global_per_ligand_long(config_path, DEFAULT_GLOBAL_LONG_OUTPUT)
-    master = build_comparison_master(global_long)
+    master = build_comparison_master(
+        global_long,
+        missing_as_miss_ligand_sets=_missing_as_miss_sets(config_path),
+    )
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     master.to_csv(output_csv, index=False)
     return len(expand_sources(config_path)), len(master)

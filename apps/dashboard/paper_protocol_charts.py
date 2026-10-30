@@ -29,7 +29,7 @@ def render_energy(path, cohort):
     import altair as alt
     summary = cohort_table(path, 'paper_energy_summary', cohort)
     if summary.empty:
-        st.info('Common-protocol energy results are not available in this database.')
+        st.info('Common-protocol energy results are not available for this cohort.')
         return
     st.subheader('Common-protocol energy · ChEMBL-count target')
     st.caption('MMFF94s single-point energies after removing and rebuilding hydrogens; '
@@ -64,7 +64,7 @@ def render_sampling(path, cohort):
     frontier = cohort_table(path, 'paper_sampling_frontier', cohort)
     reference = cohort_table(path, 'paper_sampling_reference', cohort)
     if curves.empty or frontier.empty:
-        st.info('Exact sampling curves are not available in this database.')
+        st.info('Exact sampling curves are not available for this cohort.')
         return
     st.subheader('Exact sampling curves · 1,000-candidate target')
     st.caption('Uniform sampling without replacement from each saved pre-PoseBusters pool. '

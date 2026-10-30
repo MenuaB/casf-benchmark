@@ -28,10 +28,30 @@ def test_stale_release_pin_follows_the_current_dashboard_release(monkeypatch) ->
         "dashboard-data-plinder-v3",
         "dashboard-data-casf-dedup-core-v1",
         "dashboard-data-v2-binned-pm12-v1",
+        "dashboard-data-casf-dedup-ref-v1",
         "latest",
     ):
         monkeypatch.setattr(dashboard.release_data, "release_tag", lambda tag=tag: tag)
-        assert dashboard.effective_release_tag() == "dashboard-data-casf-dedup-ref-v1"
+        assert dashboard.effective_release_tag() == "dashboard-data-ref-dedup-v1"
+
+
+def test_ligand_set_selector_order_and_labels() -> None:
+    dashboard = load_dashboard()
+    present = ["plinder", "ref_dedup", "core", "ref", "extra"]
+    assert dashboard.ordered_ligand_sets(present) == ["core", "ref", "ref_dedup", "extra", "plinder"]
+    assert dashboard.ligand_set_label("core") == "CASF core — 94 ligands"
+    assert dashboard.ligand_set_label("ref") == "CASF ref — 1,236 crystal entries / 1,044 unique ligands"
+    assert dashboard.ligand_set_label("ref_dedup") == "CASF ref dedup — 1,044 unique ligands"
+    assert dashboard.ligand_set_label("plinder") == "Plinder-22"
+    assert "Selection version: casf-ref-dedup-v1." in dashboard.REF_DEDUP_CAPTION
+    source = (REPO_ROOT / "apps" / "dashboard" / "streamlit_app.py").read_text(encoding="utf-8")
+    assert 'if ligand_set == "plinder":' in source
+    assert "format_func=ligand_set_label" in source
+    assert 'file_name=f"{ligand_set}-{table_name}.csv"' in source
+    assert "not available for this cohort" in (
+        REPO_ROOT / "apps" / "dashboard" / "paper_protocol_charts.py"
+    ).read_text(encoding="utf-8")
+    assert "not available for this cohort" in source
 
 
 def test_public_qwen_allowlist_preserves_non_qwen_rows() -> None:

@@ -4,13 +4,23 @@ from pathlib import Path
 import sqlite3
 
 import pandas as pd
+import pytest
 
 from casf_benchmark.analysis.dataset import (
     build_comparison_master,
     build_global_per_ligand_long,
     build_master_frame,
 )
+from casf_benchmark.analysis.ref_dedup import (
+    DEFAULT_MANIFEST,
+    DerivedLigandSet,
+    apply_derived_cohort,
+    load_selected_ids,
+    select_crystals,
+    write_manifest,
+)
 from casf_benchmark.cli.build_dashboard_db import build_dashboard_db
+from casf_benchmark.paths import REPO_ROOT
 from casf_benchmark.stratum_bins import assign_stratum
 
 
@@ -210,6 +220,158 @@ def test_dashboard_db_writes_strata_and_omits_empty_bins(tmp_path):
     loqi_total = rows[rows["method"] == "loqi_raw_fixed"].iloc[0]["ligands"]
     loqi_strata = rb[rb["method"] == "loqi_raw_fixed"]["ligands"].sum()
     assert loqi_strata == loqi_total
+
+
+def _tiny_intersection() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"ligand_id": "lig_a", "casf_heavy_isomeric_smiles": "CCO", "source_file": "a.mol2"},
+            {"ligand_id": "lig_b", "casf_heavy_isomeric_smiles": "CCC", "source_file": "b.mol2"},
+            {"ligand_id": "lig_c", "casf_heavy_isomeric_smiles": "CCC", "source_file": "c.mol2"},
+        ]
+    )
+
+
+def test_derived_ref_dedup_keeps_one_shared_crystal_universe(tmp_path):
+    selected = select_crystals(_tiny_intersection())
+    manifest = tmp_path / "selection.csv"
+    write_manifest(selected, manifest)
+    chosen = set(load_selected_ids(manifest))
+    assert len(chosen) == 2
+    dropped = {"lig_b", "lig_c"} - chosen
+    assert len(dropped) == 1
+    missing_selected = next(iter(chosen - {"lig_a"}))
+
+    gen_root = tmp_path / "model_ref"
+    ref_root = tmp_path / "reference_ref"
+    core_root = tmp_path / "model_core"
+    present = [mol_id for mol_id in ("lig_a", "lig_b", "lig_c") if mol_id != missing_selected]
+    generation_rows = []
+    for mol_id in present:
+        row = gen_row(mol_id, "loqi_raw_fixed", "ref", 2, 18)
+        row["run_id"] = "loqi_ref"
+        row["casf_best_rmsd"] = 0.4 if mol_id == "lig_a" else float("nan")
+        row["casf_hit_0p5"] = 1.0 if mol_id == "lig_a" else float("nan")
+        generation_rows.append(row)
+    write_csv(gen_root / "analysis" / "tables" / "geometric_per_ligand_long.csv", generation_rows)
+    write_csv(
+        ref_root / "analysis" / "tables" / "geometric_per_ligand_long.csv",
+        [ref_row(mol_id, "chembl3d_gt", "ref", 2, 18) | {"run_id": "reference_ref", "casf_best_rmsd": 1.0, "casf_hit_0p5": 0.0} for mol_id in ("lig_a", "lig_b", "lig_c")],
+    )
+    write_csv(
+        core_root / "analysis" / "tables" / "geometric_per_ligand_long.csv",
+        [gen_row("core_a", "loqi_raw_fixed", "core", 2, 18)],
+    )
+    config = tmp_path / "sources.yaml"
+    write_config(
+        config,
+        [
+            ("loqi_ref", "LOQI ref", "ref", gen_root),
+            ("loqi_core", "LOQI core", "core", core_root),
+        ],
+        refs=[("reference_ref", "Reference ref", "ref", ref_root)],
+    )
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "\n".join(
+            [
+                "derived_ligand_sets:",
+                "  - id: ref_dedup",
+                '    label: "CASF ref dedup"',
+                "    source_ligand_set: ref",
+                f"    selection_manifest: {manifest}",
+                "    selection_key: ligand_id",
+                "    selected_column: selected",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    global_long = build_global_per_ligand_long(config, output_csv=None)
+    ref_rows = global_long[global_long["ligand_set"].astype(str) == "ref"]
+    dedup = global_long[global_long["ligand_set"].astype(str) == "ref_dedup"]
+    core = global_long[global_long["ligand_set"].astype(str) == "core"]
+
+    assert set(ref_rows.loc[ref_rows["method"] == "loqi_raw_fixed", "mol_id"]) == set(present)
+    assert set(core["mol_id"]) == {"core_a"}
+    for method, group in dedup.groupby("method"):
+        assert set(group["mol_id"]) == chosen, method
+        assert group["run_id"].astype(str).str.endswith("__ref_dedup").all()
+        assert set(group["ligand_set"]) == {"ref_dedup"}
+    assert missing_selected in set(dedup.loc[dedup["method"] == "loqi_raw_fixed", "mol_id"])
+    assert dropped.isdisjoint(set(dedup["mol_id"]))
+    kept = dedup[(dedup["method"] == "loqi_raw_fixed") & (dedup["mol_id"] == "lig_a")].iloc[0]
+    assert float(kept["casf_best_rmsd"]) == 0.4
+    missing_row = dedup[(dedup["method"] == "loqi_raw_fixed") & (dedup["mol_id"] == missing_selected)].iloc[0]
+    assert pd.isna(missing_row["casf_best_rmsd"])
+
+    master = build_comparison_master(dedup, missing_as_miss_ligand_sets=frozenset({"ref_dedup"}))
+    loqi = master[master["method"] == "loqi_raw_fixed"].iloc[0]
+    assert int(loqi["ligands"]) == 2
+    assert float(loqi["casf_hit_0p5"]) == 0.5
+    assert float(loqi["casf_best_rmsd"]) == 0.4
+    assert int(loqi["defined_rmsd_ligands"]) == 1
+    reference = master[master["method"] == "chembl3d_gt"].iloc[0]
+    assert int(reference["ligands"]) == 2
+
+
+def test_public_ref_rows_derive_the_same_selected_universe():
+    candidates = [
+        REPO_ROOT / "data/results/staging/public-baseline/casf_analysis_dashboard.sqlite",
+        REPO_ROOT / "data/results/casf_analysis_dashboard.sqlite",
+    ]
+    database = next((path for path in candidates if path.is_file() and path.stat().st_size > 0), None)
+    if database is None:
+        pytest.skip("no dashboard sqlite is available")
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        per_ligand = pd.read_sql_query(
+            "SELECT * FROM per_ligand_long WHERE ligand_set = 'ref'",
+            connection,
+        )
+    selected_ids = load_selected_ids(DEFAULT_MANIFEST)
+    assert len(selected_ids) == 1044
+    assert set(per_ligand["mol_id"].astype(str)) == set(
+        pd.read_csv(REPO_ROOT / "data/mapping/casf16_ref_chembl3d_exact_intersection.csv", usecols=["ligand_id"])[
+            "ligand_id"
+        ].astype(str)
+    )
+    derived = apply_derived_cohort(
+        per_ligand,
+        DerivedLigandSet(
+            id="ref_dedup",
+            label="CASF ref dedup",
+            source_ligand_set="ref",
+            selection_manifest=DEFAULT_MANIFEST,
+        ),
+        selected_ids,
+    )
+    assert set(per_ligand["mol_id"].astype(str)) == set(
+        pd.read_csv(DEFAULT_MANIFEST, usecols=["ligand_id"])["ligand_id"].astype(str)
+    )
+    assert per_ligand["mol_id"].nunique() == 1236
+    universes = {
+        frozenset(group["mol_id"].astype(str))
+        for _method, group in derived.groupby("method")
+    }
+    assert universes == {frozenset(selected_ids)}
+    joined = per_ligand.merge(
+        derived,
+        on=["method", "mol_id"],
+        suffixes=("_ref", "_dedup"),
+    )
+    assert len(joined) == 1044 * per_ligand["method"].nunique()
+    for column in ("casf_best_rmsd", "casf_hit_0p5", "conformer_count"):
+        left = pd.to_numeric(joined[f"{column}_ref"], errors="coerce").reset_index(drop=True)
+        right = pd.to_numeric(joined[f"{column}_dedup"], errors="coerce").reset_index(drop=True)
+        pd.testing.assert_series_equal(left, right, check_names=False)
+    for column in ("run_label", "family", "tier"):
+        left = joined[f"{column}_ref"].astype("string").reset_index(drop=True)
+        right = joined[f"{column}_dedup"].astype("string").reset_index(drop=True)
+        pd.testing.assert_series_equal(left, right, check_names=False)
+    master = build_comparison_master(derived, missing_as_miss_ligand_sets=frozenset({"ref_dedup"}))
+    generation = master[master["row_type"].astype(str) == "generation"]
+    assert set(generation["ligands"]) == {1044}
 
 
 def test_assign_stratum_preserves_series_index():

@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 
-from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, DEFAULT_EXTENDED_DB as _DEFAULT_EXTENDED_DB
+from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, REPO_ROOT, DEFAULT_EXTENDED_DB as _DEFAULT_EXTENDED_DB
 from casf_benchmark.stratum_bins import STRATA, assign_stratum
 
 
@@ -61,6 +61,18 @@ _DEFAULT_DB = DEFAULT_DASHBOARD_DB
 DEFAULT_DB = Path(os.environ.get("CASF_DASHBOARD_DB", str(_DEFAULT_DB)))
 DEFAULT_EXTENDED_DB = Path(os.environ.get("CASF_EXTENDED_DB", str(_DEFAULT_EXTENDED_DB)))
 TIERS = ("fixed", "dynamic", "chembl_count")
+LIGAND_SET_ORDER = ("core", "ref", "ref_dedup", "plinder")
+LIGAND_SET_LABELS = {
+    "core": "CASF core — 94 ligands",
+    "ref": "CASF ref — 1,236 crystal entries / 1,044 unique ligands",
+    "ref_dedup": "CASF ref dedup — 1,044 unique ligands",
+    "plinder": "Plinder-22",
+}
+REF_DEDUP_CAPTION = (
+    "One fixed, model-independent crystal was selected for each unique stereochemical SMILES. "
+    "The mapping is shared by every method. Selection version: casf-ref-dedup-v1."
+)
+REF_DEDUP_SEED = "casf-ref-dedup-v1-20261030"
 QWEN_DASHBOARD_LABELS = {
     "qwen_0p6b_bigdata": "Qwen 0.6B bigdata",
     "qwen_0p6b_bigdata_to_revisited": "Qwen 0.6B bigdata→revisited",
@@ -447,9 +459,10 @@ _LEGACY_RELEASE_TAGS = frozenset(
         "dashboard-data-plinder-v3",
         "dashboard-data-casf-dedup-core-v1",
         "dashboard-data-v2-binned-pm12-v1",
+        "dashboard-data-casf-dedup-ref-v1",
     }
 )
-_FORCED_RELEASE_TAG = "dashboard-data-casf-dedup-ref-v1"
+_FORCED_RELEASE_TAG = "dashboard-data-ref-dedup-v1"
 
 
 def effective_release_tag() -> str:
@@ -789,12 +802,26 @@ def _apply_table_view_controls(data: pd.DataFrame, cols: list[str], name: str) -
     return filtered.reset_index(drop=True), visible, color_by_value
 
 
+def ordered_ligand_sets(present: list[str] | tuple[str, ...]) -> list[str]:
+    """CASF core, complex-weighted ref, ligand-balanced ref, then Plinder."""
+    present_set = {str(name) for name in present}
+    ordered = [name for name in ("core", "ref", "ref_dedup") if name in present_set]
+    ordered.extend(name for name in sorted(present_set) if name not in ordered and name != "plinder")
+    ordered.append("plinder")
+    return ordered
+
+
+def ligand_set_label(name: str) -> str:
+    return LIGAND_SET_LABELS.get(str(name), str(name))
+
+
 def display_table(
     frame: pd.DataFrame,
     columns: list[str],
     name: str,
     *,
     height: int = TABLE_HEIGHT_PX,
+    file_name: str | None = None,
 ) -> None:
     cols = [column for column in columns if column in frame.columns]
     color_by_value = False
@@ -816,7 +843,7 @@ def display_table(
     st.download_button(
         f"Download {name} CSV",
         data=data.to_csv(index=False).encode("utf-8"),
-        file_name=f"{name}.csv",
+        file_name=file_name or f"{name}.csv",
         mime="text/csv",
     )
     render_table_help(name)
@@ -1218,8 +1245,16 @@ def render_extended_analysis(extended_db_path: Path) -> None:
     label = st.selectbox("Extended table", available, key="extended_table")
     spec = EXTENDED_TABLES[label]
     frame = load_table(str(extended_db_path), spec["table"], extended_mtime_ns)
+    if (
+        ligand_set == "ref_dedup"
+        and "ligand_set" in frame.columns
+        and not frame["ligand_set"].astype(str).eq("ref_dedup").any()
+    ):
+        st.info("This panel is not available for this cohort.")
+        return
     view = filter_extended_table(frame, ligand_set, tier, family, stratum_type)
-    display_table(view, spec["columns"], spec["table"])
+    download_name = spec["table"] if ligand_set == "All" else f"{ligand_set}-{spec['table']}.csv"
+    display_table(view, spec["columns"], spec["table"], file_name=download_name)
 
 
 def main() -> None:
@@ -1243,15 +1278,33 @@ def main() -> None:
     per_ligand = drop_hidden_core_rows(load_table(str(db_path), "per_ligand_long", db_mtime_ns))
 
     present_sets = sorted(comparison_rows["ligand_set"].dropna().astype(str).unique())
-    ligand_sets = [name for name in ("core", "ref") if name in present_sets]
-    ligand_sets.extend(name for name in present_sets if name not in ligand_sets)
-    if "plinder" not in ligand_sets:
-        ligand_sets.append("plinder")
+    ligand_sets = ordered_ligand_sets(present_sets)
     ligand_set = st.sidebar.selectbox(
         "Ligand set",
         ligand_sets,
         index=0 if "core" not in ligand_sets else ligand_sets.index("core"),
+        format_func=ligand_set_label,
     )
+    if ligand_set == "ref_dedup":
+        st.caption(REF_DEDUP_CAPTION)
+        with st.expander("Selection provenance"):
+            st.markdown(f"Seed: `{REF_DEDUP_SEED}`")
+            manifest = REPO_ROOT / "data" / "mapping" / "casf16_ref_dedup_selection_v1.csv"
+            provenance = REPO_ROOT / "data" / "mapping" / "casf16_ref_dedup_selection_v1.json"
+            if manifest.is_file():
+                st.download_button(
+                    "Download selection manifest",
+                    data=manifest.read_bytes(),
+                    file_name="casf16_ref_dedup_selection_v1.csv",
+                    mime="text/csv",
+                )
+            if provenance.is_file():
+                st.download_button(
+                    "Download selection provenance",
+                    data=provenance.read_bytes(),
+                    file_name="casf16_ref_dedup_selection_v1.json",
+                    mime="application/json",
+                )
     if ligand_set == "plinder":
         extended_db_path = sidebar_extended_db_path(db_path, table_names)
         render_plinder_panel(extended_db_path)
@@ -1330,6 +1383,7 @@ def main() -> None:
                 "casf_hit_0p5",
                 "casf_hit_0p75",
                 "casf_hit_2p0",
+                "defined_rmsd_ligands",
             ],
         ),
         "CASF opt hits": (
@@ -1377,6 +1431,8 @@ def main() -> None:
             return
         st.caption("Archived energies use the original hydrogen handling and may reuse stored minimization energies. They are separate from the paper’s common-hydrogen MMFF94s results.")
     table_name, table_columns = main_views[table_label]
+    if ligand_set != "ref_dedup":
+        table_columns = [column for column in table_columns if column != "defined_rmsd_ligands"]
     table_frame = view
     if table_name == "energy":
         table_frame = attach_median_energy_std(
@@ -1395,6 +1451,7 @@ def main() -> None:
         table_columns,
         table_name,
         height=COMPARISON_TABLE_HEIGHT_PX,
+        file_name=f"{ligand_set}-{table_name}.csv",
     )
     render_threshold_charts(
         comparison_rows,

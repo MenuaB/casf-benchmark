@@ -214,3 +214,11 @@ reference_sources:
     label: "Reference datasets (ref)"
     ligand_set: ref
     root: /mnt/weka/mbedrosian/pharma_generation_analysis/reference_datasets/ref
+
+derived_ligand_sets:
+  - id: ref_dedup
+    label: "CASF ref dedup"
+    source_ligand_set: ref
+    selection_manifest: data/mapping/casf16_ref_dedup_selection_v1.csv
+    selection_key: ligand_id
+    selected_column: selected

@@ -15,6 +15,7 @@ from casf_benchmark.analysis.dataset import (
     build_global_per_ligand_long,
     expand_sources,
 )
+from casf_benchmark.analysis.ref_dedup import parse_derived_ligand_sets
 from casf_benchmark.catalog import load_families
 from casf_benchmark.paths import DEFAULT_DASHBOARD_DB, DEFAULT_ANALYSIS_SOURCES_CONFIG
 from casf_benchmark.stratum_bins import STRATA, assign_stratum
@@ -29,7 +30,11 @@ def _write_table(connection: sqlite3.Connection, name: str, frame: pd.DataFrame)
     return len(frame)
 
 
-def build_comparison_strata(per_ligand_long: pd.DataFrame) -> pd.DataFrame:
+def build_comparison_strata(
+    per_ligand_long: pd.DataFrame,
+    *,
+    missing_as_miss_ligand_sets: frozenset[str] = frozenset(),
+) -> pd.DataFrame:
     if per_ligand_long.empty:
         return pd.DataFrame()
     rows: list[pd.DataFrame] = []
@@ -51,7 +56,10 @@ def build_comparison_strata(per_ligand_long: pd.DataFrame) -> pd.DataFrame:
                     stratum_frame = tier_frame[tier_frame["stratum"].astype(str) == label].drop(columns=["stratum"])
                     if stratum_frame.empty:
                         continue
-                    aggregate = build_comparison_master(stratum_frame)
+                    aggregate = build_comparison_master(
+                        stratum_frame,
+                        missing_as_miss_ligand_sets=missing_as_miss_ligand_sets,
+                    )
                     if aggregate.empty:
                         continue
                     aggregate.insert(0, "breakdown", breakdown)
@@ -113,9 +121,14 @@ def build_dashboard_db(config_path: Path, output_db: Path) -> dict[str, int]:
         tmp_db.unlink()
 
     sources = expand_sources(config_path)
+    derived_specs = parse_derived_ligand_sets(config_path)
+    missing_as_miss = frozenset(spec.id for spec in derived_specs)
     per_ligand_long = build_global_per_ligand_long(config_path, output_csv=None)
-    comparison_rows = build_comparison_master(per_ligand_long)
-    comparison_strata = build_comparison_strata(per_ligand_long)
+    comparison_rows = build_comparison_master(per_ligand_long, missing_as_miss_ligand_sets=missing_as_miss)
+    comparison_strata = build_comparison_strata(
+        per_ligand_long,
+        missing_as_miss_ligand_sets=missing_as_miss,
+    )
     validate_strata_ligands(comparison_rows, comparison_strata)
 
     table_rows: dict[str, int] = {}
@@ -129,6 +142,24 @@ def build_dashboard_db(config_path: Path, output_db: Path) -> dict[str, int]:
         table_rows["comparison_strata"] = _write_table(connection, "comparison_strata", comparison_strata)
         table_rows["per_ligand_long"] = _write_table(connection, "per_ligand_long", per_ligand_long)
         table_rows["catalog_families"] = _write_table(connection, "catalog_families", catalog_frame())
+        if derived_specs:
+            table_rows["derived_ligand_sets"] = _write_table(
+                connection,
+                "derived_ligand_sets",
+                pd.DataFrame(
+                    [
+                        {
+                            "id": spec.id,
+                            "label": spec.label,
+                            "source_ligand_set": spec.source_ligand_set,
+                            "selection_manifest": str(spec.selection_manifest),
+                            "selection_key": spec.selection_key,
+                            "selected_column": spec.selected_column,
+                        }
+                        for spec in derived_specs
+                    ]
+                ),
+            )
 
         connection.execute("CREATE INDEX IF NOT EXISTS idx_comparison_rows_view ON comparison_rows(ligand_set, tier, row_type, family)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_comparison_strata_view ON comparison_strata(ligand_set, view_tier, breakdown, stratum, row_type, family)")
